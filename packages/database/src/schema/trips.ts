@@ -34,7 +34,11 @@ export const trips = pgTable(
   organiserId: uuid("organiser_id")
     .notNull()
     .references(() => users.id),
-  // Nullable: destination can be open ("somewhere in Sep–Nov" is a valid trip).
+  // Places on the table — "Korea/Japan" stores both (brief §8's "destination
+  // candidates"). Empty when the destination is open.
+  destinationCandidates: text("destination_candidates").array(),
+  // The settled choice, once the group picks one. Null while undecided;
+  // destination does not feed the engine at MVP (no flights or weather).
   destination: text("destination"),
   status: tripStatus("status").notNull().default("IDEA"),
   // Rough travel period the organiser is searching within (brief section 8).

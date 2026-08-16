@@ -41,3 +41,10 @@ export function formatDateRange(start: ISODate, end: ISODate): string {
 export function formatDuration(min: number, max: number): string {
   return min === max ? `${min} days` : `${min}–${max} days`;
 }
+
+/** "Korea or Japan", "Japan", or the open-destination fallback. */
+export function formatDestinations(candidates: readonly string[]): string {
+  if (candidates.length === 0) return "Destination open";
+  if (candidates.length === 1) return candidates[0]!;
+  return `${candidates.slice(0, -1).join(", ")} or ${candidates.at(-1)}`;
+}

@@ -1,5 +1,8 @@
 import type { ConstraintExtractor } from "@timeaway/constraint-parsing";
-import { mightContainConstraint } from "@timeaway/constraint-parsing";
+import {
+  mightContainConstraint,
+  parseTripRequest,
+} from "@timeaway/constraint-parsing";
 import type { Db, Trip } from "@timeaway/database";
 import {
   addNlDeclarations,
@@ -12,8 +15,12 @@ import {
 } from "@timeaway/database";
 import type { ISODate } from "@timeaway/shared";
 import type { Context } from "grammy";
-import { Bot } from "grammy";
-import { formatDateRange, formatDuration } from "./format.js";
+import { Bot, InlineKeyboard } from "grammy";
+import {
+  formatDateRange,
+  formatDestinations,
+  formatDuration,
+} from "./format.js";
 import { parseDurationRange, parseHorizon } from "./parse.js";
 
 export interface BotDeps {
@@ -31,13 +38,19 @@ function todaySgt(): ISODate {
   return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
 }
 
-type WizardStep = "destination" | "horizon" | "duration";
+type WizardStep = "destination" | "horizon" | "duration" | "confirm";
 
 interface WizardState {
   step: WizardStep;
-  destination: string | null;
+  destinations: string[];
   horizonStart?: ISODate;
   horizonEnd?: ISODate;
+  durationMin?: number;
+  durationMax?: number;
+  /** Set when /newtrip arguments were interpreted, so we echo them back. */
+  interpreted: boolean;
+  /** Skips re-asking for a destination the arguments already supplied. */
+  askedDestination: boolean;
 }
 
 const DESTINATION_PROMPT =
@@ -108,23 +121,30 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
   bot.command("newtrip", async (ctx) => {
     if (!ctx.from) return;
-    wizards.set(keyOf(ctx.chat.id, ctx.from.id), {
+    // Deterministic grammar first; the LLM is only consulted for what it
+    // can't claim (founder-decided, docs/DECISIONS.md).
+    const request = parseTripRequest(ctx.match ?? "", today());
+    const state: WizardState = {
       step: "destination",
-      destination: null,
-    });
-    await ctx.reply(
-      DESTINATION_PROMPT,
-      forceReply(ctx.msg.message_id, "Destination — or /skip"),
-    );
+      destinations: request.destinations,
+      horizonStart: request.horizon?.start,
+      horizonEnd: request.horizon?.end,
+      durationMin: request.duration?.min,
+      durationMax: request.duration?.max,
+      interpreted: request.interpretations.length > 0,
+      askedDestination: request.destinations.length > 0,
+    };
+    wizards.set(keyOf(ctx.chat.id, ctx.from.id), state);
+    await promptNextStep(ctx, state, ctx.msg.message_id);
   });
 
   bot.command("skip", async (ctx) => {
     if (!ctx.from) return;
     const state = wizards.get(keyOf(ctx.chat.id, ctx.from.id));
     if (state?.step !== "destination") return;
-    state.destination = null;
-    state.step = "horizon";
-    await ctx.reply(HORIZON_PROMPT, forceReply(ctx.msg.message_id, "e.g. Sep–Nov"));
+    state.destinations = [];
+    state.askedDestination = true;
+    await promptNextStep(ctx, state, ctx.msg.message_id);
   });
 
   bot.command("cancel", async (ctx) => {
@@ -168,6 +188,138 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
   });
 
+  /** Everything known so far, for echoing an interpretation back. */
+  function summaryLines(state: WizardState): string[] {
+    const lines = [formatDestinations(state.destinations)];
+    if (state.horizonStart && state.horizonEnd) {
+      lines.push(formatDateRange(state.horizonStart, state.horizonEnd));
+    }
+    if (state.durationMin !== undefined && state.durationMax !== undefined) {
+      lines.push(formatDuration(state.durationMin, state.durationMax));
+    }
+    return lines;
+  }
+
+  function nextStep(state: WizardState): WizardStep {
+    if (!state.askedDestination) return "destination";
+    if (!state.horizonStart) return "horizon";
+    if (state.durationMin === undefined) return "duration";
+    return "confirm";
+  }
+
+  /**
+   * Ask only for what's still missing. Anything the grammar interpreted is
+   * echoed once alongside the next question, so correcting and answering
+   * happen in a single step (founder-decided; brief §11's "propose an
+   * interpretation"). When nothing is left to ask, confirm before writing.
+   */
+  async function promptNextStep(
+    ctx: Context,
+    state: WizardState,
+    replyToId: number,
+  ): Promise<void> {
+    state.step = nextStep(state);
+
+    const echo = state.interpreted;
+    state.interpreted = false;
+
+    if (state.step === "confirm") {
+      await ctx.reply(
+        [
+          echo ? "Got it:" : "Ready to create:",
+          ...summaryLines(state),
+          "",
+          "Create this trip?",
+        ].join("\n"),
+        {
+          reply_parameters: { message_id: replyToId },
+          reply_markup: new InlineKeyboard()
+            .text("Create trip", "trip:create")
+            .text("Start over", "trip:restart"),
+        },
+      );
+      return;
+    }
+
+    const preamble = echo ? ["Got it:", ...summaryLines(state), ""] : [];
+
+    const prompts: Record<Exclude<WizardStep, "confirm">, [string, string]> = {
+      destination: [DESTINATION_PROMPT, "Destination — or /skip"],
+      horizon: [HORIZON_PROMPT, "e.g. Sep–Nov"],
+      duration: [DURATION_PROMPT, "e.g. 4–6"],
+    };
+    const [prompt, placeholder] = prompts[state.step];
+    await ctx.reply(
+      [...preamble, prompt].join("\n"),
+      forceReply(replyToId, placeholder),
+    );
+  }
+
+  async function finaliseTrip(
+    ctx: Context,
+    state: WizardState,
+    replyToId: number,
+  ): Promise<void> {
+    const from = ctx.from!;
+    const displayName = [from.first_name, from.last_name]
+      .filter(Boolean)
+      .join(" ");
+    const organiser = await upsertTelegramUser(deps.db, {
+      telegramUserId: String(from.id),
+      displayName,
+    });
+    const trip = await createTrip(deps.db, {
+      organiserUserId: organiser.id,
+      destinationCandidates: state.destinations,
+      horizonStart: state.horizonStart,
+      horizonEnd: state.horizonEnd,
+      durationMinDays: state.durationMin,
+      durationMaxDays: state.durationMax,
+      telegramChatId: isGroup(ctx) ? String(ctx.chat!.id) : null,
+    });
+    wizards.delete(keyOf(ctx.chat!.id, from.id));
+
+    const lines = [
+      "Trip created 🎉",
+      "",
+      ...summaryLines(state),
+      "",
+      isGroup(ctx)
+        ? "Just talk dates in this chat — I'm listening. Friends elsewhere can use:"
+        : "Share it with your group:",
+      `${deps.publicBaseUrl}/t/${trip.shortCode}`,
+    ];
+    await ctx.reply(lines.join("\n"), {
+      reply_parameters: { message_id: replyToId },
+      link_preview_options: { is_disabled: true },
+    });
+  }
+
+  bot.callbackQuery("trip:create", async (ctx) => {
+    if (!ctx.from || !ctx.chat) return;
+    const state = wizards.get(keyOf(ctx.chat.id, ctx.from.id));
+    await ctx.answerCallbackQuery();
+    if (state?.step !== "confirm") return;
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await finaliseTrip(ctx, state, ctx.callbackQuery.message!.message_id);
+  });
+
+  bot.callbackQuery("trip:restart", async (ctx) => {
+    if (!ctx.from || !ctx.chat) return;
+    const state = wizards.get(keyOf(ctx.chat.id, ctx.from.id));
+    await ctx.answerCallbackQuery();
+    if (!state) return;
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    const fresh: WizardState = {
+      step: "destination",
+      destinations: [],
+      interpreted: false,
+      askedDestination: false,
+    };
+    wizards.set(keyOf(ctx.chat.id, ctx.from.id), fresh);
+    await promptNextStep(ctx, fresh, ctx.callbackQuery.message!.message_id);
+  });
+
   async function handleWizardStep(
     ctx: Context & { message: { text: string } },
     state: WizardState,
@@ -176,10 +328,12 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
     if (state.step === "destination") {
       const text = ctx.message.text.trim();
-      state.destination =
-        text.toLowerCase() === "skip" ? null : text.slice(0, 100);
-      state.step = "horizon";
-      await ctx.reply(HORIZON_PROMPT, forceReply(messageId, "e.g. Sep–Nov"));
+      state.destinations =
+        text.toLowerCase() === "skip"
+          ? []
+          : parseTripRequest(text, today()).destinations;
+      state.askedDestination = true;
+      await promptNextStep(ctx, state, messageId);
       return;
     }
 
@@ -194,55 +348,28 @@ export function createBot(token: string, deps: BotDeps): Bot {
       }
       state.horizonStart = horizon.start;
       state.horizonEnd = horizon.end;
-      state.step = "duration";
-      await ctx.reply(DURATION_PROMPT, forceReply(messageId, "e.g. 4–6"));
+      await promptNextStep(ctx, state, messageId);
       return;
     }
 
-    const duration = parseDurationRange(ctx.message.text);
-    if (!duration) {
-      await ctx.reply(
-        `Sorry, I didn't catch that. ${DURATION_PROMPT}`,
-        forceReply(messageId, "e.g. 4–6"),
-      );
-      return;
+    if (state.step === "duration") {
+      const duration = parseDurationRange(ctx.message.text);
+      if (!duration) {
+        await ctx.reply(
+          `Sorry, I didn't catch that. ${DURATION_PROMPT}`,
+          forceReply(messageId, "e.g. 4–6"),
+        );
+        return;
+      }
+      state.durationMin = duration.min;
+      state.durationMax = duration.max;
+      // Nothing was interpreted on the way in, so create without a confirm tap.
+      if (nextStep(state) === "confirm" && !state.interpreted) {
+        await finaliseTrip(ctx, state, messageId);
+        return;
+      }
+      await promptNextStep(ctx, state, messageId);
     }
-
-    const from = ctx.from!;
-    const displayName = [from.first_name, from.last_name]
-      .filter(Boolean)
-      .join(" ");
-    const organiser = await upsertTelegramUser(deps.db, {
-      telegramUserId: String(from.id),
-      displayName,
-    });
-    const trip = await createTrip(deps.db, {
-      organiserUserId: organiser.id,
-      destination: state.destination,
-      horizonStart: state.horizonStart,
-      horizonEnd: state.horizonEnd,
-      durationMinDays: duration.min,
-      durationMaxDays: duration.max,
-      telegramChatId: isGroup(ctx) ? String(ctx.chat!.id) : null,
-    });
-    wizards.delete(keyOf(ctx.chat!.id, from.id));
-
-    const lines = [
-      "Trip created 🎉",
-      "",
-      state.destination ?? "Destination open",
-      formatDateRange(state.horizonStart!, state.horizonEnd!),
-      formatDuration(duration.min, duration.max),
-      "",
-      isGroup(ctx)
-        ? "Just talk dates in this chat — I'm listening. Friends elsewhere can use:"
-        : "Share it with your group:",
-      `${deps.publicBaseUrl}/t/${trip.shortCode}`,
-    ];
-    await ctx.reply(lines.join("\n"), {
-      reply_parameters: { message_id: messageId },
-      link_preview_options: { is_disabled: true },
-    });
   }
 
   async function handleAmbientMessage(

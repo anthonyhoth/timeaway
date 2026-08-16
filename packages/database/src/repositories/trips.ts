@@ -6,7 +6,8 @@ import { participants, trips } from "../schema/index.js";
 
 export interface CreateTripInput {
   organiserUserId: string;
-  destination?: string | null;
+  /** All places under consideration; empty means the destination is open. */
+  destinationCandidates?: string[];
   horizonStart?: string | null;
   horizonEnd?: string | null;
   durationMinDays?: number | null;
@@ -40,7 +41,8 @@ export async function createTrip(db: Db, input: CreateTripInput): Promise<Trip> 
           .values({
             shortCode,
             organiserId: input.organiserUserId,
-            destination: input.destination ?? null,
+            destinationCandidates: input.destinationCandidates ?? [],
+            destination: null,
             status: "PLANNING",
             horizonStart: input.horizonStart ?? null,
             horizonEnd: input.horizonEnd ?? null,

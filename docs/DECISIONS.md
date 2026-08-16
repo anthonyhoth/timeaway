@@ -170,6 +170,26 @@ Implementation notes (agent, recorded):
 
 ---
 
+## Decision (2026-08-16, founder-decided): deterministic grammar first, LLM only as fallback
+
+**The engine is the default path; the LLM is the exception.** A shared deterministic grammar (`packages/constraint-parsing/src/grammar/`) runs before any model call, in both entry points — `/newtrip` arguments and ambient group messages. The LLM is consulted only for input the grammar explicitly declines (`needsLlm`). This cuts cost and latency on the common cases and, more importantly, makes the everyday behaviour reproducible and testable rather than model-dependent.
+
+Escalation triggers (the grammar refusing to guess, rather than guessing badly):
+- conditional language — "unless", "if", "depends", "but not", "avoid", "prefer"
+- leftover tokens containing digits after dates and durations were consumed
+- nothing recognised at all in non-empty input
+
+**`/newtrip` now accepts free text**, parsed by consuming what it recognises and treating the residue as destination candidates — so unknown place names work without a gazetteer. `/newtrip a Korea/Japan trip in 2027 year end` yields destinations `["Korea", "Japan"]` and horizon `2027-11-15 … 2028-01-05`, then asks only for the duration. Previously all arguments were silently discarded.
+
+Founder-decided semantics:
+- **"Year end" resolves to 15 Nov – 5 Jan**, deliberately crossing the year boundary: a trip departing 30 Dec is a year-end trip. Other fuzzy periods (mid-year, early/late, quarters, school holidays, next year) follow the same table-driven approach and are approximate by design — they set a *rough* search horizon (brief §8), not a hard constraint. A period already past rolls forward to its next occurrence unless a year is pinned.
+- **Multiple destinations are stored as candidates** (`trips.destination_candidates`), not flattened to one label. `trips.destination` now means *the settled choice*, null until the group picks; display falls back to "Korea or Japan". Destination does not feed the engine at MVP (no flights or weather), so this is a labelling concern only.
+- **Confirmation is shown only for interpreted values.** Anything inferred is echoed once alongside the next question ("Got it: Korea or Japan / 15 Nov 2027 – 5 Jan 2028" + "How many days?"), so correcting and answering happen in one step — brief §11's "propose an interpretation". When arguments supply everything and there's no question left to piggyback on, a Create/Start-over card appears instead. Fully literal input creates with no confirmation step.
+
+**Consequence for ambient capture:** the same grammar should front the ambient path so common phrasings ("can't do October") never reach the LLM. Currently ambient still calls Luna for everything that passes the prefilter — wiring the grammar in front is the next step, not yet done.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
