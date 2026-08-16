@@ -140,3 +140,21 @@ describe("parseAvailabilityMessage — declining safely", () => {
     expect(parse("october?")).toBeNull();
   });
 });
+
+describe("parseAvailabilityMessage — does not over-claim a period", () => {
+  // Found by an end-to-end run: this marked someone out for all of November.
+  it("declines when only part of a month is meant", () => {
+    expect(parse("cmi first two weeks of nov lah")).toBeNull();
+    expect(parse("cannot end of december")).toBeNull();
+    expect(parse("free mid sep")).toBeNull();
+    expect(parse("can after the 15th of november")).toBeNull();
+  });
+
+  it("still claims the plain whole-period cases", () => {
+    expect(parse("cmi nov")?.declarations[0]).toMatchObject({
+      state: "UNAVAILABLE",
+      start: "2026-11-01",
+      end: "2026-11-30",
+    });
+  });
+});

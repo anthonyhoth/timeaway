@@ -12,14 +12,14 @@
     "webhook:set": "tsx src/scripts/set-webhook.ts"
   },
   "dependencies": {
+    "@hono/node-server": "^1.13.0",
     "@timeaway/constraint-parsing": "workspace:*",
     "@timeaway/database": "workspace:*",
     "@timeaway/shared": "workspace:*",
     "@timeaway/trip-engine": "workspace:*",
-    "hono": "^4.6.0",
-    "@hono/node-server": "^1.13.0",
     "dotenv": "^17.4.2",
-    "grammy": "^1.45.1"
+    "grammy": "^1.45.1",
+    "hono": "^4.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

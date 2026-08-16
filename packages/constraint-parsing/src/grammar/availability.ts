@@ -33,6 +33,15 @@ const POSITIVE =
 const UNKNOWN =
   /\b(?:roster(?! is out)|shift(?:s)? (?:not|nt)|not (?:out|released|confirmed|fixed|sure)|dunno|dun know|don'?t know|no idea|tbc|tbd|let (?:you|u|yall) know|lyk|confirm(?:ing)? later|pending|waiting (?:for|on)|not yet (?:confirm|out|sure))\b/i;
 
+/**
+ * Qualifiers that narrow a period to part of it — "first two weeks of Nov",
+ * "end of December", "mid-Sep". The month matcher would happily return the
+ * whole month here, silently over-claiming someone's unavailability, so the
+ * grammar declines and lets the LLM resolve the narrower span instead.
+ */
+const SUB_PERIOD_QUALIFIER =
+  /\b(?:first|last|early|earlier|mid|middle|late|later|beginning|start|end|half|before|after|until|till|from)\b|\b\d{1,2}\s*(?:weeks?|wks?)\b/i;
+
 /** Obligations that read as hard unavailability in this segment. */
 const BLOCKING_COMMITMENT =
   /\b(?:reservist|ict|in ?camp|ns\b|exam(?:s)?|wedding|work trip|bto|attachment)\b/i;
@@ -97,6 +106,10 @@ export function parseAvailabilityMessage(
   }
 
   if (!dateRef) return null;
+
+  // A narrowing qualifier means the matched period is wider than what was
+  // actually said — decline rather than over-claim.
+  if (SUB_PERIOD_QUALIFIER.test(text)) return null;
 
   const isUnknown = UNKNOWN.test(text);
   const isBlocked = BLOCKING_COMMITMENT.test(text);

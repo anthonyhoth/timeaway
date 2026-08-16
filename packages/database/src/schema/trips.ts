@@ -56,6 +56,9 @@ export const trips = pgTable(
   telegramChatId: text("telegram_chat_id"),
   // /pause turns ambient capture off for the group without ending the trip.
   ambientPaused: boolean("ambient_paused").notNull().default(false),
+  // The live results card in the group chat, edited in place as availability
+  // lands rather than reposted. Null until the first card is sent.
+  cardMessageId: text("card_message_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

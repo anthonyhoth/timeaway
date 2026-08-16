@@ -1,0 +1,1 @@
+ALTER TABLE "trips" ADD COLUMN "card_message_id" text;

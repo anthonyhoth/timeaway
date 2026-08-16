@@ -3,7 +3,12 @@ import type { AvailabilityDeclaration } from "./availability.js";
 import type { WindowParticipant } from "./feasibility.js";
 import { evaluateWindow, evaluateWindows } from "./feasibility.js";
 import { SG_PUBLIC_HOLIDAYS_2026 } from "./holidays-sg.js";
-import { rankWindows } from "./ranking.js";
+import {
+  blockedParticipantIds,
+  rankForDisplay,
+  rankNearMisses,
+  rankWindows,
+} from "./ranking.js";
 import { generateCandidateWindows } from "./windows.js";
 
 const decl = (
@@ -164,5 +169,69 @@ describe("rankWindows — proof-scenario shape", () => {
       evaluateWindows([...windows].reverse(), participants, SG_PUBLIC_HOLIDAYS_2026),
     );
     expect(reversed.map((r) => r.window)).toEqual(ranked.map((r) => r.window));
+  });
+});
+
+describe("conflict resolution — near misses", () => {
+  // Two people whose unavailability leaves no window that works for both.
+  const conflicting: WindowParticipant[] = [
+    { id: "mei", declarations: [decl("UNAVAILABLE", "2026-11-01", "2026-11-15")] },
+    { id: "dan", declarations: [decl("UNAVAILABLE", "2026-11-16", "2026-11-30")] },
+    { id: "ana", declarations: [decl("AVAILABLE", "2026-11-01", "2026-11-30")] },
+  ];
+
+  const evaluated = evaluateWindows(
+    generateCandidateWindows({
+      horizonStart: "2026-11-01",
+      horizonEnd: "2026-11-30",
+      durationMinDays: 5,
+      durationMaxDays: 5,
+    }),
+    conflicting,
+    SG_PUBLIC_HOLIDAYS_2026,
+  );
+
+  it("finds nothing feasible when constraints genuinely conflict", () => {
+    expect(rankWindows(evaluated)).toEqual([]);
+  });
+
+  it("still offers the closest options, excluding as few people as possible", () => {
+    const nearMisses = rankNearMisses(evaluated);
+    expect(nearMisses.length).toBeGreaterThan(0);
+    expect(nearMisses[0]!.counts.unavailable).toBe(1);
+  });
+
+  it("names who each near-miss window excludes", () => {
+    const best = rankNearMisses(evaluated)[0]!;
+    const blocked = blockedParticipantIds(best);
+    expect(blocked).toHaveLength(1);
+    expect(["mei", "dan"]).toContain(blocked[0]);
+  });
+
+  it("orders near misses by fewest people excluded first", () => {
+    const counts = rankNearMisses(evaluated).map((w) => w.counts.unavailable);
+    expect(counts).toEqual([...counts].sort((a, b) => a - b));
+  });
+
+  it("rankForDisplay hides near misses when something is feasible", () => {
+    const workable = evaluateWindows(
+      generateCandidateWindows({
+        horizonStart: "2026-11-01",
+        horizonEnd: "2026-11-30",
+        durationMinDays: 5,
+        durationMaxDays: 5,
+      }),
+      [{ id: "solo", declarations: [decl("AVAILABLE", "2026-11-01", "2026-11-30")] }],
+      SG_PUBLIC_HOLIDAYS_2026,
+    );
+    const result = rankForDisplay(workable);
+    expect(result.feasible.length).toBeGreaterThan(0);
+    expect(result.nearMisses).toEqual([]);
+  });
+
+  it("rankForDisplay falls back to near misses when nothing works", () => {
+    const result = rankForDisplay(evaluated);
+    expect(result.feasible).toEqual([]);
+    expect(result.nearMisses.length).toBeGreaterThan(0);
   });
 });

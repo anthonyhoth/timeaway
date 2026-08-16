@@ -236,6 +236,24 @@ Vocabulary was grounded in published Singlish references plus SG workplace/NS te
 
 ---
 
+## Decision (2026-08-16): live trip card, and what happens when constraints conflict
+
+**One card per trip, edited in place.** The ranked result is a single message in the group chat that is updated with `editMessageText` as availability arrives, not reposted. Constraints land continuously in ambient capture, so reposting would make the bot the noisiest member of the chat. Telegram rejects no-op edits ("message is not modified"), which is expected whenever a parsed message doesn't move the ranking and is swallowed rather than logged as an error. `/dates` deliberately reposts instead of editing, so the card can be resurfaced at the bottom of a busy chat.
+
+**The conflict case is a product feature, not an error state.** When no window works for everyone, "nothing found" is useless. `rankNearMisses` ranks infeasible windows by how few people they exclude, so the card can say "Closest: 6–9 Nov, Mei can't make it — shift a date or go without someone." Timeaway surfaces the trade-off; the group decides. This is the one moment where the product's whole value is on screen.
+
+**Card copy preserves the distinctions the engine computes.** Roster-pending participants are named separately from plain maybes ("Farah — waiting on roster" vs "— maybe"), and people who have said nothing appear as "no dates yet" rather than being silently absent. Collapsing these would discard the validated differentiator at the exact moment the user sees it.
+
+**Confirmation is organiser-only**, enforced on the callback by comparing the presser's user id to `trips.organiser_id`; anyone else gets an explanatory alert rather than a silent no-op. Confirming sets `DATE_SELECTED` and re-renders the card into its settled state.
+
+### Bug found by end-to-end testing, worth remembering
+
+An end-to-end run against the real database revealed the grammar parsing *"cmi first two weeks of nov lah"* as **UNAVAILABLE for all of November** — a silent over-claim that would have produced wrong trip dates from a correct sentence. The month matcher found "nov" and ignored the narrowing qualifier. Fixed by declining whenever a sub-period qualifier ("first", "last", "early", "mid", "end of", "N weeks", "after") appears alongside a period, leaving those for the LLM.
+
+The general lesson, now encoded in tests: **the grammar's failure mode must be declining, never over-claiming.** A missed parse costs one LLM call; a confident wrong parse corrupts someone's availability invisibly. Unit tests alone did not catch this — it took running real sentences against real storage.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

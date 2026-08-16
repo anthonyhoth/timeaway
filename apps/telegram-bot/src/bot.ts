@@ -10,10 +10,21 @@ import {
   createTrip,
   ensureParticipantForTelegramUser,
   findActivePlanningTripByChatId,
+  getTripById,
+  loadTripPlanningState,
+  selectTripDates,
   setAmbientPaused,
+  setCardMessageId,
   setLeaveCap,
   upsertTelegramUser,
 } from "@timeaway/database";
+import {
+  evaluateWindows,
+  generateCandidateWindows,
+  rankForDisplay,
+  SG_PUBLIC_HOLIDAYS_2026,
+} from "@timeaway/trip-engine";
+import { renderTripCard } from "./card.js";
 import type { ISODate } from "@timeaway/shared";
 import type { Context } from "grammy";
 import { Bot, InlineKeyboard } from "grammy";
@@ -294,6 +305,9 @@ export function createBot(token: string, deps: BotDeps): Bot {
       reply_parameters: { message_id: replyToId },
       link_preview_options: { is_disabled: true },
     });
+
+    // Seed the live card immediately, so the group has something to watch.
+    if (isGroup(ctx)) await refreshTripCard(ctx, trip);
   }
 
   bot.callbackQuery("trip:create", async (ctx) => {
@@ -435,14 +449,154 @@ export function createBot(token: string, deps: BotDeps): Bot {
       await setLeaveCap(deps.db, participant.id, result.maxLeaveDays, text);
     }
 
-    // Ack without noise (founder-decided): react, don't reply. The live trip
-    // card (task 10) will pick these up on its next update.
+    // Ack without noise (founder-decided): react, don't reply — the live card
+    // carries the actual update.
     try {
       await ctx.react("✍");
     } catch (error) {
       console.error("reaction failed", error);
     }
+
+    const updated = await getTripById(deps.db, trip.id);
+    if (updated) await refreshTripCard(ctx, updated);
   }
+
+  /**
+   * Recompute the trip's ranked windows and update its live card in place.
+   * Called after every accepted constraint, so the group watches the picture
+   * sharpen without the chat filling with repeated posts.
+   */
+  async function refreshTripCard(ctx: Context, trip: Trip): Promise<void> {
+    const chatId = trip.telegramChatId;
+    if (!chatId) return;
+
+    const participants = await loadTripPlanningState(deps.db, trip.id);
+
+    // Windows need a horizon and a duration; without them the card just
+    // invites input rather than pretending to compute.
+    const canCompute =
+      trip.horizonStart !== null &&
+      trip.horizonEnd !== null &&
+      trip.durationMinDays !== null &&
+      trip.durationMaxDays !== null;
+
+    const ranked = canCompute
+      ? rankForDisplay(
+          evaluateWindows(
+            generateCandidateWindows({
+              horizonStart: trip.horizonStart!,
+              horizonEnd: trip.horizonEnd!,
+              durationMinDays: trip.durationMinDays!,
+              durationMaxDays: trip.durationMaxDays!,
+            }),
+            participants.map((p) => ({
+              id: p.participantId,
+              declarations: p.declarations,
+              maxLeaveDays: p.maxLeaveDays ?? undefined,
+            })),
+            SG_PUBLIC_HOLIDAYS_2026,
+          ),
+        )
+      : { feasible: [], nearMisses: [] };
+
+    const selected =
+      trip.status === "DATE_SELECTED" && trip.selectedStart && trip.selectedEnd
+        ? { start: trip.selectedStart, end: trip.selectedEnd }
+        : null;
+
+    const text = renderTripCard({
+      destinations: trip.destinationCandidates ?? [],
+      durationMinDays: trip.durationMinDays,
+      durationMaxDays: trip.durationMaxDays,
+      ranked,
+      participants,
+      tripUrl: `${deps.publicBaseUrl}/t/${trip.shortCode}`,
+      selected,
+    });
+
+    const best = ranked.feasible[0];
+    const keyboard =
+      best && !selected
+        ? new InlineKeyboard().text(
+            `Select ${formatDateRange(best.window.start, best.window.end)}`,
+            `sel:${best.window.start}:${best.window.end}`,
+          )
+        : undefined;
+
+    if (trip.cardMessageId) {
+      try {
+        await ctx.api.editMessageText(chatId, Number(trip.cardMessageId), text, {
+          reply_markup: keyboard,
+          link_preview_options: { is_disabled: true },
+        });
+      } catch (error) {
+        // Telegram rejects edits that would not change anything — expected
+        // whenever a parsed message doesn't move the ranking.
+        const description = String(error);
+        if (!description.includes("message is not modified")) {
+          console.error("card edit failed", error);
+        }
+      }
+      return;
+    }
+
+    const message = await ctx.api.sendMessage(chatId, text, {
+      reply_markup: keyboard,
+      link_preview_options: { is_disabled: true },
+    });
+    await setCardMessageId(deps.db, trip.id, String(message.message_id));
+  }
+
+  bot.command("dates", async (ctx) => {
+    if (!isGroup(ctx)) return;
+    const trip = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat.id),
+    );
+    if (!trip) {
+      await ctx.reply("No trip being planned here yet — /newtrip to start one.");
+      return;
+    }
+    // Repost rather than edit, so the card surfaces at the bottom of the chat.
+    await setCardMessageId(deps.db, trip.id, "");
+    await refreshTripCard(ctx, { ...trip, cardMessageId: null });
+  });
+
+  /** Only the organiser confirms dates (founder-decided, docs/DECISIONS.md). */
+  bot.callbackQuery(/^sel:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/, async (ctx) => {
+    const [, start, end] = ctx.match as RegExpMatchArray;
+    const trip = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat!.id),
+    );
+    if (!trip) {
+      await ctx.answerCallbackQuery("That trip is no longer active.");
+      return;
+    }
+
+    const participants = await loadTripPlanningState(deps.db, trip.id);
+    const organiser = participants.find((p) => p.isOrganiser);
+    const presser = await upsertTelegramUser(deps.db, {
+      telegramUserId: String(ctx.from.id),
+      displayName: [ctx.from.first_name, ctx.from.last_name]
+        .filter(Boolean)
+        .join(" "),
+    });
+    const organiserUserId = trip.organiserId;
+
+    if (presser.id !== organiserUserId) {
+      await ctx.answerCallbackQuery({
+        text: `Only ${organiser?.displayName ?? "the organiser"} can confirm the dates.`,
+        show_alert: true,
+      });
+      return;
+    }
+
+    await selectTripDates(deps.db, trip.id, start!, end!);
+    await ctx.answerCallbackQuery("Dates confirmed 🎉");
+    const updated = await getTripById(deps.db, trip.id);
+    if (updated) await refreshTripCard(ctx, updated);
+  });
 
   bot.catch((err) => {
     console.error("bot error", err.error);

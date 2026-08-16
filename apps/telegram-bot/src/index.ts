@@ -51,6 +51,7 @@ if (mode === "webhook") {
 void bot.api
   .setMyCommands([
     { command: "newtrip", description: "Start planning a trip" },
+    { command: "dates", description: "Show the best dates so far" },
     { command: "skip", description: "Skip the current wizard question" },
     { command: "cancel", description: "Abandon the current trip setup" },
     { command: "pause", description: "Stop reading this chat" },
