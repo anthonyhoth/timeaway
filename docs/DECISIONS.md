@@ -81,6 +81,18 @@ Small implementation assumptions made while building the first schema (brief sec
 
 ---
 
+## Decision (2026-08-16): availability model — declarations as ranges, UNANSWERED as absence, latest-wins resolution
+
+Implementation shape for brief section 28 task 3, recorded because each point is a semantic commitment, not just code:
+
+- **Availability is stored as range declarations, not per-day rows.** A declaration is (participant, state, start, end, source, original text). "Can't do Sep 4–17" is one row, whether it came from the calendar or from parsed natural language — both sources produce the identical shape, per brief section 12. `source` is an enum (`CALENDAR` | `NATURAL_LANGUAGE`), and a check constraint requires `original_text` on NL-derived rows (the auditability rule).
+- **UNANSWERED is never stored.** The declared-state enum has four values (`AVAILABLE`, `MAYBE`, `UNAVAILABLE`, `UNKNOWN`); UNANSWERED is the derived state of a date covered by no declaration. This is the direct encoding of "untouched calendar dates default to UNANSWERED" — not a collapse of the five-state model. All five states exist in the shared TypeScript type and in resolution output.
+- **Overlap resolution is latest-declaration-wins, per date.** Declarations are ordered by creation; the most recent declaration covering a date determines its state. This makes corrections natural ("Can't do Sep 4–17" … "actually Sep 10 works") and makes roster releases work: a broad UNKNOWN over November gets overridden by concrete availability when the roster lands, without deleting history.
+- **Date ranges are inclusive on both ends**, and dates are ISO `YYYY-MM-DD` strings end to end (Postgres `date` columns, string comparisons in the engine). No timezones anywhere in availability semantics.
+- **Resolution lives in `@timeaway/trip-engine` as pure functions** (`resolveDay`, `resolveRange`), unit-tested, with the DB layer knowing nothing about precedence. Declarations are append-mostly; editing history is not required for MVP.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
