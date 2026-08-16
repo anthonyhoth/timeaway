@@ -43,7 +43,7 @@ function build(participants: ParticipantPlanningState[]) {
     durationMaxDays: 5,
     ranked: rankForDisplay(evaluated),
     participants,
-    tripUrl: "https://gettimeaway.com/t/abc123",
+    tripUrl: "https://timeaway.sg/t/abc123",
   };
 }
 
@@ -55,7 +55,7 @@ describe("renderTripCard", () => {
       durationMaxDays: null,
       ranked: { feasible: [], nearMisses: [] },
       participants: [],
-      tripUrl: "https://gettimeaway.com/t/abc123",
+      tripUrl: "https://timeaway.sg/t/abc123",
     });
     expect(card).toContain("No dates yet");
     expect(card).toContain("Destination open");
@@ -75,7 +75,7 @@ describe("renderTripCard", () => {
     expect(card).toContain("Best match so far");
     expect(card).toContain("✅ 2 can make it");
     expect(card).toMatch(/🗓 \d+ leave days?/);
-    expect(card).toContain("https://gettimeaway.com/t/abc123");
+    expect(card).toContain("https://timeaway.sg/t/abc123");
   });
 
   it("names roster-pending people distinctly from plain maybes", () => {

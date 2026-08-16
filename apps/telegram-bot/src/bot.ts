@@ -48,7 +48,7 @@ import { parseDurationRange, parseHorizon } from "./parse.js";
 
 export interface BotDeps {
   db: Db;
-  /** e.g. https://gettimeaway.com — trip links are `${base}/t/${shortCode}`. */
+  /** e.g. https://timeaway.sg — trip links are `${base}/t/${shortCode}`. */
   publicBaseUrl: string;
   /** Absent = ambient capture runs prefilter-only and extracts nothing. */
   extractor?: ConstraintExtractor;

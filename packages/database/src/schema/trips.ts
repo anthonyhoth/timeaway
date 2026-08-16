@@ -28,7 +28,7 @@ export const trips = pgTable(
   "trips",
   {
   id: uuid("id").primaryKey().defaultRandom(),
-  // Public share slug for gettimeaway.com/t/<shortCode> — link-passthrough is
+  // Public share slug for timeaway.sg/t/<shortCode> — link-passthrough is
   // the distribution model (docs/DECISIONS.md), so every trip is linkable.
   shortCode: text("short_code").notNull().unique(),
   organiserId: uuid("organiser_id")

@@ -24,7 +24,7 @@ if (!openaiKey) {
 
 const bot = createBot(requireEnv("TELEGRAM_BOT_TOKEN"), {
   db: createDb(requireEnv("DATABASE_URL")),
-  publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "https://gettimeaway.com",
+  publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "https://timeaway.sg",
   extractor: openaiKey ? new OpenAiConstraintExtractor(openaiKey) : undefined,
 });
 

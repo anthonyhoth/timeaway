@@ -1,5 +1,5 @@
 /**
- * Public trip share code for gettimeaway.com/t/<code>. 32-character alphabet
+ * Public trip share code for timeaway.sg/t/<code>. 32-character alphabet
  * (no 0/O/1/l/I ambiguity) so 256 % 32 === 0 keeps the modulo unbiased;
  * 32^8 ≈ 1.1e12 codes. Uniqueness is enforced by the DB constraint — callers
  * retry on collision.

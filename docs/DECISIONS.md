@@ -273,6 +273,25 @@ Implementation notes:
 
 ---
 
+## Decision (2026-08-16, founder-decided): domain is timeaway.sg, and the trip page's funnel shape
+
+**Domain is `timeaway.sg`**, overriding brief §3's `gettimeaway.com` (with `gettimeaway.app` as redirect). The `.sg` reinforces the Singapore beachhead the research pass narrowed to, and is shorter. All code, comments and `.env.example` now default to `https://timeaway.sg`; the brief keeps its original text as the verbatim founder document, with this entry as the override. Trip links are `timeaway.sg/t/<shortCode>`.
+
+**The trip page is the demo, not a landing page.** A marketing page argues Timeaway works; the trip page shows it working on the visitor's own trip, with their friends' names on it. Three visitor types arrive at that URL, and only one wants marketing:
+1. Participants already in the Telegram group — they want status; a pitch is noise.
+2. Participants arriving from other messengers (the link-passthrough model) — they experience the product working before being asked anything. Highest intent of any visitor.
+3. Forwarded or curious strangers — the only audience for whom a waitlist is the natural ask.
+
+**Primary CTA is "start your own trip", waitlist secondary** (founder-decided). The bot already works, so asking someone to join a waitlist for something usable today would be incoherent; the waitlist is for the *native app*, which remains an MVP exclusion. The primary button opens `t.me/TimeawayBot`, which also drives the participant→organiser conversion brief §6 tracks as a metric. Email capture sits below it, quieter.
+
+**Conversion peaks at DATE_SELECTED** — the moment the group succeeds (brief §6's definition of success). CTA emphasis should be contextual: understated while planning is in progress, celebratory once dates are locked.
+
+**Privacy: summary only, first names** (founder-decided). The short code is unguessable (32^8 ≈ 1.1e12) but the URL is unauthenticated, so the page shows the best window, alternatives, leave cost, and per-person *status* with first names ("Farah — roster pending"). No per-day availability grids, no full names, no contact details. This matches §15's "shared within trip" tier while keeping raw availability — explicitly classified private — off a public URL. Revisit if authenticated access (e.g. Telegram Login Widget) is added.
+
+**Page design deferred to the founder**, who will supply direction based on the brand kit. Only the domain, funnel shape and privacy envelope are settled here.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
