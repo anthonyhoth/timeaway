@@ -135,6 +135,14 @@ Telegram bots in privacy mode (the default) do not receive group messages except
 
 ---
 
+## Decision (2026-08-16, founder-decided): the organiser confirms the selected dates
+
+In a group trip, only the **organiser** can confirm a candidate window (moving the trip to `DATE_SELECTED`), via an inline button on the ranked-results card posted in the chat. Everyone sees the ranked windows and the confirmation; social agreement happens in conversation, where it already happens today. This matches the brief's organiser-as-primary-user model (§7) and avoids building a voting mechanism whose stall-on-non-responders failure mode is the exact problem Timeaway exists to solve. "Any participant confirms" and "group vote" were considered and rejected for MVP; a vote could return later as an opt-in if real groups ask for it.
+
+Related flow decision implied by privacy mode + link-passthrough: participants provide availability **privately in a DM with the bot** (deep link `t.me/<bot>?start=trip_<code>` from the shared trip card) or later via the web link — never by the bot reading the group. Ranked results and the confirmation are posted **to the group**; raw individual availability stays private per the brief's §15 access model, surfacing only as window-level statuses ("3 can make it · Farah roster pending").
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
