@@ -44,19 +44,25 @@ export const HERO_CSS = `
     radial-gradient(circle at 72% 34%, #7767F1 0%, rgba(119,103,241,0) 55%),
     radial-gradient(circle at 38% 74%, #55B7E8 0%, rgba(85,183,232,0) 58%),
     radial-gradient(circle at 50% 50%, #4457E8 0%, #4457E8 60%, #3D4FD6 100%);
-  transform:translate(-50%,-50%) translateY(var(--orb-y,60vh)) scale(var(--orb-s,.55));
+  /* translate only — scaling a gradient this large forces a full repaint
+     every frame, which is what made the scroll feel steppy. */
+  transform:translate3d(-50%,-50%,0) translateY(var(--orb-y,70vh));
   opacity:var(--orb-o,1);
-  will-change:transform,opacity;
+  will-change:transform;
+  contain:paint;
 }
 /* Slow internal drift gives the "Siri" feeling without spinning the element. */
 .orb::after{
   content:"";position:absolute;inset:0;border-radius:50%;
   background:
-    conic-gradient(from var(--spin,0deg) at 46% 44%,
+    conic-gradient(from 0deg at 46% 44%,
       rgba(85,183,232,.42), rgba(119,103,241,.30), rgba(68,87,232,.10),
       rgba(85,183,232,.42));
-  mix-blend-mode:screen;filter:blur(42px);opacity:.75;
+  mix-blend-mode:screen;filter:blur(42px);opacity:.7;
+  animation:orbspin 48s linear infinite;
+  will-change:transform;
 }
+@keyframes orbspin{to{transform:rotate(360deg)}}
 
 .scene{position:relative;z-index:1;min-height:100svh;display:flex;
   flex-direction:column;align-items:center;justify-content:center;
@@ -113,64 +119,77 @@ export const HERO_CSS = `
 @media (prefers-reduced-motion:reduce){
   .bubble{animation:none}
   .orb::after{animation:none}
+  .js .result{transform:none;opacity:1}
 }
 `;
 
 export const HERO_SCRIPT = `
 (function(){
   document.documentElement.classList.add('js');
-  var orb = document.querySelector('.orb');
   var root = document.documentElement;
-  if(!orb) return;
+  if(!document.querySelector('.orb')) return;
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  var acts = {
-    hero: document.getElementById('act-hero'),
-    sphere: document.getElementById('act-sphere'),
-    result: document.getElementById('act-result')
-  };
+  var ids = ['act-hero','act-sphere','act-result'];
+  var els = ids.map(function(id){ return document.getElementById(id); });
   var card = document.querySelector('.result');
   var bubbles = Array.prototype.slice.call(document.querySelectorAll('.bubble'));
 
+  // Measure once and on resize. Reading getBoundingClientRect every frame
+  // forces a layout flush per frame, which shows up as scroll jank.
+  var boxes = [];
+  function measure(){
+    boxes = els.map(function(el){
+      if(!el) return { top: 0, height: 1 };
+      var r = el.getBoundingClientRect();
+      return { top: r.top + window.scrollY, height: r.height };
+    });
+  }
+  measure();
+  window.addEventListener('resize', measure, { passive: true });
+  window.addEventListener('load', measure);
+
   function clamp(v){ return v < 0 ? 0 : v > 1 ? 1 : v; }
-  /** 0 while the section is below the fold, 1 once it has fully arrived. */
-  function progress(el){
-    if(!el) return 0;
-    var r = el.getBoundingClientRect();
-    var vh = window.innerHeight;
-    return clamp((vh - r.top) / (vh + r.height));
+  function progress(box, scrollY, vh){
+    return clamp((scrollY + vh - box.top) / (vh + box.height));
   }
 
-  var spin = 0;
+  // Damped follow. The reference gets its glide from Lenis interpolating the
+  // scroll position; easing our own progress values gets the same feel
+  // without hijacking native scrolling (and without the a11y trade-offs).
+  var cur = [0, 0, 0];
+  var EASE = reduce ? 1 : 0.11;
+  var last = '';
+
   function frame(){
-    var pHero = progress(acts.hero);
-    var pSphere = progress(acts.sphere);
-    var pResult = progress(acts.result);
+    var scrollY = window.scrollY;
+    var vh = window.innerHeight;
 
-    // The orb rises from below, fills the sphere act, then recedes behind
-    // the resolved card.
-    var y = 84 - pSphere * 134;
-    var s = 0.5 + pSphere * 0.85 - pResult * 0.5;
-    root.style.setProperty('--orb-y', y + 'vh');
-    root.style.setProperty('--orb-s', Math.max(0.2, s).toFixed(3));
-    root.style.setProperty('--orb-o', (1 - pResult * 0.55).toFixed(3));
+    for(var i = 0; i < 3; i++){
+      var target = progress(boxes[i], scrollY, vh);
+      cur[i] += (target - cur[i]) * EASE;
+    }
+    var pHero = cur[0], pSphere = cur[1], pResult = cur[2];
 
-    // Chat bubbles scatter and fade as the answer forms.
+    // Position only — the orb is a fixed size and simply travels past.
+    var y = 84 - pSphere * 150;
     var fade = clamp((pHero - 0.55) * 3);
-    for(var i = 0; i < bubbles.length; i++){
-      bubbles[i].style.setProperty('--bubble-o', (1 - fade).toFixed(3));
-    }
+    var settle = clamp((pResult - 0.25) * 2.6);
 
-    // The resolved card settles upright.
-    if(card){
-      root.style.setProperty('--res-o', clamp((pResult - 0.25) * 2.6).toFixed(3));
-      root.style.setProperty('--res-y', (40 - clamp((pResult - 0.25) * 2.6) * 40).toFixed(1) + 'px');
-      root.style.setProperty('--res-r', (9 - clamp((pResult - 0.25) * 2.6) * 9).toFixed(2) + 'deg');
-    }
-
-    if(!reduce){
-      spin = (spin + 0.12) % 360;
-      root.style.setProperty('--spin', spin.toFixed(2) + 'deg');
+    // One string compare avoids redundant style writes on idle frames.
+    var sig = y.toFixed(2) + '|' + fade.toFixed(3) + '|' + settle.toFixed(3);
+    if(sig !== last){
+      last = sig;
+      root.style.setProperty('--orb-y', y.toFixed(2) + 'vh');
+      root.style.setProperty('--orb-o', (1 - pResult * 0.4).toFixed(3));
+      for(var b = 0; b < bubbles.length; b++){
+        bubbles[b].style.setProperty('--bubble-o', (1 - fade).toFixed(3));
+      }
+      if(card){
+        root.style.setProperty('--res-o', settle.toFixed(3));
+        root.style.setProperty('--res-y', (40 - settle * 40).toFixed(1) + 'px');
+        root.style.setProperty('--res-r', (9 - settle * 9).toFixed(2) + 'deg');
+      }
     }
     requestAnimationFrame(frame);
   }

@@ -324,6 +324,24 @@ Scroll progress is computed per act and written to CSS custom properties on a `r
 
 **Honest limits, so expectations stay calibrated:** this is a gradient-and-perspective composition, not a raytraced render. Photoreal 3D — a rendered globe, physical calendar objects, real lighting — needs an actual 3D tool. Spline is the usual choice for founders here since it exports web-embeddable scenes directly; Blender plus pre-rendered stills is the other route. Either would slot into the same three-act structure without changing the scroll logic.
 
+### How the reference actually does it (inspected 2026-08-16)
+
+Worth recording, because it changed the implementation. Inspecting amra.com directly:
+
+- **Their sphere is a looping 1080×1080 MP4** streamed from Mux, sitting inside a `border-radius: 50%` container with a base64 blurred JPEG placeholder while it loads. `autoplay muted loop playsinline`. It is a pre-rendered animation, not CSS — which is why the gradient motion looks organic and costs nothing to play.
+- **Their sphere never scales.** The beacon's transform is a plain `translate`; it is a fixed size and the page scrolls past it. The apparent growth is just the circle's curvature entering the viewport.
+- **They run Lenis** (`html class="lenis lenis-smooth"`), which replaces native scrolling with an interpolated, damped position. That is the single biggest contributor to the glide.
+
+**Changes made after that inspection**, when the founder observed our scroll felt less smooth:
+1. **Dropped `scale()` on the orb** — animating scale on a 1500px multi-stop gradient forces a full repaint every frame. Now fixed-size with `translate3d` only, matching the reference and staying on the compositor.
+2. **Stopped animating the conic gradient's angle.** A changing `from` angle under a 42px blur cannot be cached; the layer is now rasterized once and rotated via CSS animation, which is compositor-only.
+3. **Cached section geometry.** The loop measured `getBoundingClientRect()` three times per frame, forcing a layout flush per frame; offsets are now measured on load and resize only.
+4. **Added damped easing to scroll progress** (`cur += (target − cur) × 0.11`), which recovers most of the Lenis feel without hijacking native scroll — deliberately avoiding the accessibility and platform-behaviour trade-offs a scroll-jacking library brings.
+
+Measured after: median frame 16.6 ms, p90 17.4 ms, worst 18.4 ms, no frame over 25 ms across a scripted scroll sweep — a locked 60 fps.
+
+**The remaining gap to the reference is the sphere asset itself.** Matching it exactly means rendering a looping gradient video (Blender/After Effects/Spline) and clipping it to a circle, which also removes the gradient rasterization cost entirely. The current structure would accept that swap by replacing one element.
+
 **Progressive enhancement was load-bearing, not optional.** Acts two and three put white text over the orb, so with JavaScript disabled they would have been white-on-white and unreadable. A `.js` class gates the whole choreography: without it those sections paint their own gradient background and the trip card renders upright and opaque. `prefers-reduced-motion` also stops the float and drift animations.
 
 Note for a future session: the founder asked to install skills named `/taste` and `/impeccable`. Neither exists in their skills catalogue, org catalogue, or the Anthropic set — searched as both skills and plugins. Nothing was installed.
