@@ -348,6 +348,21 @@ Note for a future session: the founder asked to install skills named `/taste` an
 
 ---
 
+## Decision (2026-08-17, founder-decided): the destination knowledge base is engine-internal, not a customer-facing surface
+
+Revises the framing of the 2026-08-16 knowledge-base entry, which described it as a "non-blocking suggestion layer" rendered after window ranking. **The founder's intent is that it feeds the decision engine, not the UI.** Destination recommendations to users are a V2 idea, not part of this MVP.
+
+Practical consequences:
+- Nothing in the bot card or the web trip page should display climate, price tier, or destination suggestions. The earlier entry's "7–10 Nov · consider Chiang Mai (dry, low season)" example is **not** the plan.
+- The package stays as a queryable input the engine may draw on, and its data (climate normals, SG demand calendar, destination events) remains correct and tested regardless of whether anything consumes it yet.
+- It is therefore not "dormant unwired UI" — it is an engine input awaiting a decision about whether it should influence ranking at all.
+
+**One open question this leaves**, for the founder when relevant: within a trip whose destination is already known, the knowledge base could legitimately rank *windows* — a November window and a December window to the same place differ in weather, demand, and destination-side events like Golden Week. That would be an engine input rather than a user-facing suggestion, and so consistent with this decision. But it would change the founder-confirmed lexicographic ranking order (available → leave → roster-pending → maybe → start → duration), whose stated virtue is that every position is explainable in one sentence. Not to be added without an explicit decision.
+
+**Also corrected here (agent overstatement):** deployment and webhooks were previously described as blocking a real trial. They are not. Long polling works in production as well as locally; the webhook is a scale and latency optimisation. The genuine constraint is only that the bot is unavailable whenever the machine running it sleeps, and that trip links resolve to localhost until a host and domain exist — both of which matter for unattended multi-day testing with other people, not for the founder's own testing.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
