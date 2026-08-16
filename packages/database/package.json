@@ -12,10 +12,12 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0",
-    "drizzle-orm": "^0.45.2"
+    "@timeaway/shared": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@types/pg": "^8.15.0",
     "drizzle-kit": "^0.31.10",
     "typescript": "^5.6.0"
   }

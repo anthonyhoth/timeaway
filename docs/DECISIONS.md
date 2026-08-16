@@ -112,6 +112,19 @@ The founder ruled directly on window classification, and confirmed the remaining
 
 ---
 
+## Decision (2026-08-16, founder-decided): Telegram bot uses grammY with webhooks
+
+The bot framework is **grammY** (TypeScript-first, actively maintained, first-class Hono adapter) and the production update transport is a **webhook** into the same Hono service that serves everything else — one process on Railway, per the brief's single-service architecture. Long-polling exists only as the local-dev mode (`pnpm dev` / `BOT_MODE=polling`), since localhost can't receive webhooks. The webhook is authenticated with Telegram's `secret_token` echo; `pnpm webhook:set` registers the URL after deploys.
+
+Supporting implementation choices made alongside (agent, recorded):
+
+- **DB driver is node-postgres (`pg`), not Neon's HTTP driver.** Repositories need real transactions (user+identity, trip+organiser-participant are atomic pairs) and the API is a long-running server, so the standard Postgres protocol is the right fit. The database is still Neon — infrastructure choice unchanged.
+- **Wizard state is in-memory**, keyed by chat+user, lost on restart, single-instance only. Fine for MVP; must move to Postgres or Redis before running multiple instances. The wizard is the structured input path — the NL constraint layer (task 8) is separate and LLM-backed; the wizard's month/duration parsing is deterministic and unit-tested.
+- **Trips created via the wizard start at PLANNING**, not IDEA: the wizard collects the full owner search space and immediately hands back a share link, so there is no observable IDEA stage in this flow. IDEA remains in the enum for future entry points.
+- **"Today" is Singapore time (UTC+8)** for horizon parsing ("Aug–Oct" said mid-August starts today, not Aug 1; past months roll to next year). Injectable for tests; revisit if the beachhead widens.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
