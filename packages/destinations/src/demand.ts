@@ -1,5 +1,5 @@
 import type { ISODate } from "@timeaway/shared";
-import { eachDay, SG_PUBLIC_HOLIDAYS_2026 } from "@timeaway/trip-engine";
+import { eachDay, SG_PUBLIC_HOLIDAYS } from "@timeaway/trip-engine";
 import type { PriceTier } from "./types.js";
 
 /**
@@ -51,7 +51,7 @@ export interface DemandAssessment {
 export function assessDemand(
   start: ISODate,
   end: ISODate,
-  publicHolidays: ReadonlySet<ISODate> = SG_PUBLIC_HOLIDAYS_2026,
+  publicHolidays: ReadonlySet<ISODate> = SG_PUBLIC_HOLIDAYS,
 ): DemandAssessment {
   const days = eachDay(start, end);
   if (days.length === 0) return { tier: "LOW", pressure: 0, reasons: [] };

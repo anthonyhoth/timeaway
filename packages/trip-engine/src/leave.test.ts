@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { SG_PUBLIC_HOLIDAYS_2026 } from "./holidays-sg.js";
+import {
+  isSgHolidayCoverage,
+  SG_PUBLIC_HOLIDAYS,
+  SG_PUBLIC_HOLIDAYS_2026,
+  SG_PUBLIC_HOLIDAYS_2027,
+} from "./holidays-sg.js";
 import { isWeekend, leaveDaysRequired } from "./leave.js";
 
 describe("isWeekend", () => {
@@ -38,5 +43,25 @@ describe("leaveDaysRequired", () => {
     expect(
       leaveDaysRequired("2026-08-08", "2026-08-10", SG_PUBLIC_HOLIDAYS_2026),
     ).toBe(0);
+  });
+});
+
+describe("2027 holiday coverage", () => {
+  it("knows the gazetted 2027 dates", () => {
+    // CNY falls Sat 6 + Sun 7 Feb 2027, with Mon 8 Feb as the substitute.
+    expect(SG_PUBLIC_HOLIDAYS_2027.has("2027-02-08")).toBe(true);
+    expect(SG_PUBLIC_HOLIDAYS_2027.has("2027-10-28")).toBe(true); // Deepavali
+  });
+
+  it("makes the CNY 2027 long weekend cheap in leave", () => {
+    // Sat 6 – Mon 8 Feb: weekend plus the substitute holiday.
+    expect(leaveDaysRequired("2027-02-06", "2027-02-08", SG_PUBLIC_HOLIDAYS)).toBe(0);
+    // Extending to Wed 10 Feb costs only Tue and Wed.
+    expect(leaveDaysRequired("2027-02-06", "2027-02-10", SG_PUBLIC_HOLIDAYS)).toBe(2);
+  });
+
+  it("reports whether a window is inside gazetted coverage", () => {
+    expect(isSgHolidayCoverage("2027-05-01", "2027-05-05")).toBe(true);
+    expect(isSgHolidayCoverage("2028-01-01", "2028-01-05")).toBe(false);
   });
 });

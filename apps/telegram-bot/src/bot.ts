@@ -22,7 +22,7 @@ import {
   evaluateWindows,
   generateCandidateWindows,
   rankForDisplay,
-  SG_PUBLIC_HOLIDAYS_2026,
+  SG_PUBLIC_HOLIDAYS,
 } from "@timeaway/trip-engine";
 import { renderTripCard } from "./card.js";
 import type { ISODate } from "@timeaway/shared";
@@ -494,7 +494,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
               declarations: p.declarations,
               maxLeaveDays: p.maxLeaveDays ?? undefined,
             })),
-            SG_PUBLIC_HOLIDAYS_2026,
+            SG_PUBLIC_HOLIDAYS,
           ),
         )
       : { feasible: [], nearMisses: [] };
