@@ -125,6 +125,16 @@ Supporting implementation choices made alongside (agent, recorded):
 
 ---
 
+## Decision (2026-08-16, founder-decided): bot keeps Telegram privacy mode ON; ambient group capture is a later opt-in
+
+Telegram bots in privacy mode (the default) do not receive group messages except commands, replies to the bot's own messages, and service messages — @mentions do **not** bypass it. Disabling privacy mode (or making the bot a group admin) would let Timeaway read entire group conversations, enabling the brief §30 vision of friends casually typing "Can't do October" and the bot picking it up ambiently.
+
+**Founder decision: privacy mode stays ON.** Reading whole group chats by default is a trust and positioning liability that contradicts the brief's own privacy-first stance (§15), and the validated link-passthrough distribution model doesn't need it — participants respond via the shared web link. Ambient capture may return later as an **explicit opt-in** ("let Timeaway watch this chat for availability messages"), recorded as a new decision when it does.
+
+**Mechanism:** every wizard prompt uses ForceReply (with `selective` targeting in groups), so the user's answer is a reply to the bot's message — which privacy mode delivers. The destination Skip became `/skip` (or a typed "skip"), since an inline button can't share a message with ForceReply. The text handler additionally ignores any group message that isn't a direct reply to the bot, so even a privacy-off/admin misconfiguration never silently consumes ambient conversation.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

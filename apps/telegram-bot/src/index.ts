@@ -42,6 +42,7 @@ if (mode === "webhook") {
 void bot.api
   .setMyCommands([
     { command: "newtrip", description: "Start planning a trip" },
+    { command: "skip", description: "Skip the current wizard question" },
     { command: "cancel", description: "Abandon the current trip setup" },
   ])
   .catch((err) => console.error("setMyCommands failed", err));
