@@ -447,6 +447,18 @@ The principle: **state assumptions out loud, stay quiet about non-assumptions.**
 
 ---
 
+## Note (2026-08-17): Telegram rejects the whole message when an inline button URL is invalid
+
+**Symptom:** after the duration assumption ("I'll assume 3–7 days"), the bot went silent — no trip confirmation at all.
+
+**Cause:** the `.env` had been pointed at `http://localhost:3000` for local testing (on the agent's own suggestion), and Telegram refuses `localhost` as an inline keyboard button URL. Critically it **rejects the entire `sendMessage` call**, not just the offending button, so the whole "Trip set up ✓" message vanished. The failure was invisible in the chat and only appeared in the process log as `400: inline keyboard button URL ... is invalid: Wrong HTTP URL`.
+
+**Fix:** `isButtonSafeUrl` gates every URL button — requiring http/https, a dotted hostname, and rejecting localhost/127.0.0.1/0.0.0.0. When a URL fails the check the button is omitted and the link still appears as plain text in the message body, so nothing is lost in local development. Unit-tested, since the failure mode is silent.
+
+**Generalisable lesson:** a Telegram send that fails takes the whole message with it. Any user-visible step that depends on one API call should assume that call can fail on data that looked fine locally — and `bot.catch` logging to stdout means such failures are invisible to the person actually using the bot. Worth revisiting whether the catch handler should surface something to the user rather than only the console.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

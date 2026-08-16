@@ -107,6 +107,26 @@ const JOIN_MESSAGE =
   "about dates, nothing else. /pause stops me anytime.\n\n" +
   "/newtrip — start planning a trip";
 
+/**
+ * Telegram only accepts publicly resolvable URLs in inline keyboard buttons,
+ * and rejects the **whole message** when one is invalid rather than dropping
+ * the button — so a localhost base URL silently swallowed the entire trip
+ * confirmation. Anything not button-safe falls back to a plain text link.
+ */
+export function isButtonSafeUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+    const host = url.hostname.toLowerCase();
+    if (["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"].includes(host)) {
+      return false;
+    }
+    return host.includes(".");
+  } catch {
+    return false;
+  }
+}
+
 function isGroup(ctx: Context): boolean {
   return ctx.chat?.type === "group" || ctx.chat?.type === "supergroup";
 }
@@ -346,6 +366,16 @@ export function createBot(token: string, deps: BotDeps): Bot {
       // until this one is bound to a group nobody can contribute anything.
       // Say that plainly rather than celebrating, and hand over the one
       // action that unblocks it.
+      const keyboard = new InlineKeyboard().url(
+        "Add to group chat",
+        `https://t.me/${ctx.me.username}?startgroup=trip_${trip.shortCode}`,
+      );
+      // Only offer the trip page as a button when Telegram will accept it;
+      // otherwise it still appears as a link in the text below.
+      if (isButtonSafeUrl(tripUrl)) {
+        keyboard.row().url("View trip page", tripUrl);
+      }
+
       await ctx.reply(
         [
           "Trip set up ✓",
@@ -353,16 +383,13 @@ export function createBot(token: string, deps: BotDeps): Bot {
           ...summaryLines(state),
           "",
           "Now add me to the group chat — that's where I pick up everyone's dates.",
+          "",
+          tripUrl,
         ].join("\n"),
         {
           reply_parameters: { message_id: replyToId },
-          reply_markup: new InlineKeyboard()
-            .url(
-              "Add to group chat",
-              `https://t.me/${ctx.me.username}?startgroup=trip_${trip.shortCode}`,
-            )
-            .row()
-            .url("View trip page", tripUrl),
+          reply_markup: keyboard,
+          link_preview_options: { is_disabled: true },
         },
       );
       return;
