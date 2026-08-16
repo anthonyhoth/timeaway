@@ -68,6 +68,9 @@ export interface DestinationEvent {
   end: ISODate;
   /** Raises price pressure while active (festivals, national holidays). */
   raisesPrices: boolean;
+  /** Shifts by a week or so year to year — blossom, foliage, ski conditions.
+   *  Copy should hedge ("usually") rather than state these as fact. */
+  approximate?: boolean;
   activities?: ActivityTag[];
 }
 

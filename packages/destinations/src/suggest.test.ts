@@ -86,3 +86,67 @@ describe("suggestDestinations", () => {
     expect(suggestDestinations(base)).toEqual(suggestDestinations(base));
   });
 });
+
+describe("destination events", () => {
+  const events = [
+    {
+      destinationId: "tropical",
+      label: "Songkran",
+      start: "2026-04-13",
+      end: "2026-04-15",
+      raisesPrices: true,
+    },
+    {
+      destinationId: "snowy",
+      label: "ski season",
+      start: "2026-12-10",
+      end: "2027-03-31",
+      raisesPrices: false,
+      approximate: true,
+      activities: ["snow" as const],
+    },
+  ];
+
+  it("raises only the affected destination's price tier", () => {
+    const during = suggestDestinations({
+      ...base,
+      start: "2026-04-13",
+      end: "2026-04-16",
+      events,
+    });
+    const tropical = during.find((r) => r.destination.id === "tropical")!;
+    const snowy = during.find((r) => r.destination.id === "snowy")!;
+    expect(tropical.priceTier).toBe("SHOULDER");
+    expect(tropical.reasons).toContain("Songkran");
+    // Same dates, no event there — stays at the origin-side tier.
+    expect(snowy.priceTier).toBe("LOW");
+  });
+
+  it("ranks a destination lower during its own peak than just after", () => {
+    const during = suggestDestinations({
+      ...base,
+      start: "2026-04-13",
+      end: "2026-04-16",
+      events,
+    }).find((r) => r.destination.id === "tropical")!;
+    const after = suggestDestinations({
+      ...base,
+      start: "2026-04-20",
+      end: "2026-04-23",
+      events,
+    }).find((r) => r.destination.id === "tropical")!;
+    expect(after.score).toBeGreaterThan(during.score);
+  });
+
+  it("hedges approximate events in the reason text", () => {
+    const results = suggestDestinations({
+      ...base,
+      start: "2027-01-10",
+      end: "2027-01-15",
+      events,
+      looking: "snow",
+    });
+    expect(results[0]!.destination.id).toBe("snowy");
+    expect(results[0]!.reasons).toContain("ski season (usually)");
+  });
+});

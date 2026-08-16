@@ -1,11 +1,19 @@
 import type { ISODate } from "@timeaway/shared";
 import { monthWeights, weightedClimate } from "./climate.js";
 import { assessDemand } from "./demand.js";
-import type { Destination, MonthClimate, PriceTier } from "./types.js";
+import type {
+  Destination,
+  DestinationEvent,
+  MonthClimate,
+  PriceTier,
+} from "./types.js";
 
 export interface SuggestionInput {
   destinations: readonly Destination[];
   climate: Readonly<Record<string, MonthClimate[]>>;
+  /** Destination-side seasonal windows; the only signal that differentiates
+   *  price between destinations for the same dates. */
+  events?: readonly DestinationEvent[];
   /** Inclusive window the group is considering. */
   start: ISODate;
   end: ISODate;
@@ -13,6 +21,26 @@ export interface SuggestionInput {
   looking?: "any" | "warm" | "snow";
   /** Cap block time from Singapore — 4–6 day trips rarely justify long-haul. */
   maxFlightHours?: number;
+}
+
+/** Events whose window overlaps the trip window at all. */
+function overlappingEvents(
+  events: readonly DestinationEvent[],
+  destinationId: string,
+  start: ISODate,
+  end: ISODate,
+): DestinationEvent[] {
+  return events.filter(
+    (e) => e.destinationId === destinationId && e.start <= end && e.end >= start,
+  );
+}
+
+const TIER_ORDER: PriceTier[] = ["LOW", "SHOULDER", "HIGH", "PEAK"];
+
+/** Bump a tier up one step, capped at PEAK. */
+function raiseTier(tier: PriceTier): PriceTier {
+  const index = TIER_ORDER.indexOf(tier);
+  return TIER_ORDER[Math.min(index + 1, TIER_ORDER.length - 1)]!;
 }
 
 export interface DestinationSuggestion {
@@ -97,11 +125,34 @@ export function suggestDestinations(
     const climate = weightedClimate(months, weights);
     if (!climate) continue;
 
+    const events = overlappingEvents(
+      input.events ?? [],
+      destination.id,
+      input.start,
+      input.end,
+    );
+    const eventReasons = events.map((e) =>
+      e.approximate ? `${e.label} (usually)` : e.label,
+    );
+    // A destination-side peak raises that destination's tier only — this is
+    // what makes Tokyo during Golden Week rank below Tokyo a fortnight later.
+    const priceTier = events.some((e) => e.raisesPrices)
+      ? raiseTier(demand.tier)
+      : demand.tier;
+
     let score =
       0.35 * comfortScore(climate.avgHighC) +
       0.25 * drynessScore(climate.rainDays) +
-      0.25 * PRICE_SCORE[demand.tier] +
+      0.25 * PRICE_SCORE[priceTier] +
       0.15 * proximityScore(destination.flightHoursFromSin);
+
+    // An event offering what the group wants outweighs raw climate scoring.
+    if (
+      input.looking === "snow" &&
+      events.some((e) => e.activities?.includes("snow"))
+    ) {
+      score = Math.max(score, 0.9);
+    }
 
     // Preference overrides the general comfort curve: a snow trip *wants* the
     // cold that would otherwise score badly.
@@ -115,8 +166,12 @@ export function suggestDestinations(
       destination,
       score: Math.round(score * 1000) / 1000,
       climate,
-      priceTier: demand.tier,
-      reasons: [...climateReasons(climate, looking), ...demand.reasons],
+      priceTier,
+      reasons: [
+        ...climateReasons(climate, looking),
+        ...eventReasons,
+        ...demand.reasons,
+      ],
     });
   }
 

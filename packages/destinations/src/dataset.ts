@@ -14,8 +14,10 @@ export {
   CLIMATE_PERIOD,
   DESTINATIONS,
 } from "./data/generated.js";
+export { DESTINATION_EVENTS, EVENT_COVERAGE_END } from "./data/events.js";
 
 import { CLIMATE, DESTINATIONS } from "./data/generated.js";
+import { DESTINATION_EVENTS } from "./data/events.js";
 
 export interface WindowSuggestionOptions {
   looking?: "any" | "warm" | "snow";
@@ -32,6 +34,7 @@ export function suggestForWindow(
   const results = suggestDestinations({
     destinations: DESTINATIONS,
     climate: CLIMATE,
+    events: DESTINATION_EVENTS,
     start,
     end,
     looking: options.looking,

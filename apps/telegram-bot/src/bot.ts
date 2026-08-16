@@ -1,6 +1,7 @@
 import type { ConstraintExtractor } from "@timeaway/constraint-parsing";
 import {
   mightContainConstraint,
+  parseAvailabilityMessage,
   parseTripRequest,
 } from "@timeaway/constraint-parsing";
 import type { Db, Trip } from "@timeaway/database";
@@ -379,7 +380,6 @@ export function createBot(token: string, deps: BotDeps): Bot {
     // Stage 1: free deterministic gate. Failing messages are dropped here —
     // never logged, never stored ("reads ≠ stores").
     if (!mightContainConstraint(text)) return;
-    if (!deps.extractor) return;
 
     const trip = await findActivePlanningTripByChatId(
       deps.db,
@@ -387,17 +387,25 @@ export function createBot(token: string, deps: BotDeps): Bot {
     );
     if (!trip || trip.ambientPaused) return;
 
-    let result;
-    try {
-      result = await deps.extractor.extract(text, {
-        today: today(),
-        horizonStart: trip.horizonStart,
-        horizonEnd: trip.horizonEnd,
-        destination: trip.destination,
-      });
-    } catch (error) {
-      console.error("extraction failed", error);
-      return;
+    const extractionCtx = {
+      today: today(),
+      horizonStart: trip.horizonStart,
+      horizonEnd: trip.horizonEnd,
+      destination: trip.destination,
+    };
+
+    // Stage 2: deterministic grammar handles the common phrasings for free.
+    // The LLM is consulted only for what the grammar declines to claim
+    // (founder-decided, docs/DECISIONS.md).
+    let result = parseAvailabilityMessage(text, extractionCtx);
+    if (!result) {
+      if (!deps.extractor) return;
+      try {
+        result = await deps.extractor.extract(text, extractionCtx);
+      } catch (error) {
+        console.error("extraction failed", error);
+        return;
+      }
     }
     if (!result.relevant) return;
     // Third-party relays ("Sheryl can only do school holidays") need identity

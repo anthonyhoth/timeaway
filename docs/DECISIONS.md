@@ -215,6 +215,27 @@ This does extend the product's job slightly, from "when can we go" toward "where
 
 ---
 
+## Decision (2026-08-16): destination-side events, and a Singlish-aware ambient grammar
+
+**Destination events now differentiate price between destinations.** Singapore-side demand pressure is identical for every destination in a given window, so it could only ever rank *windows*, never *places*. A hand-curated event table supplies the missing signal: a destination-side peak raises that destination's tier alone, which is why Tokyo during Golden Week ranks below Tokyo a fortnight later. Events also carry activity tags, so a group wanting snow gets Sapporo's ski season surfaced directly.
+
+Data honesty rules applied:
+- Lunar-calendar dates move yearly and are listed **explicitly per year**, never computed — Lunar New Year is 17 Feb 2026 and 6 Feb 2027, shared by Chinese New Year, Seollal, and Tết. Coverage ends 2027-12-31 (`EVENT_COVERAGE_END`) and must be extended before then.
+- Windows that drift year to year (cherry blossom, autumn foliage, ski conditions, haze) carry `approximate: true` and render hedged — "ski season (usually)" — rather than as fact.
+- Events whose real dates could not be verified were **omitted rather than guessed**; a wrong festival date is worse than a missing one.
+
+**The deterministic grammar now fronts ambient capture, tuned for Singlish.** Previously every message passing the prefilter cost an LLM call. The grammar claims the common phrasings for free and the LLM sees only what it declines. Vocabulary covers local usage this beachhead actually writes: `cmi`, `bo eng`, `can`/`cannot` as complete answers, particles (`lah`, `leh`, `sia`, `liao`) stripped before parsing, `AL` for annual leave, `reservist`/`ICT`/`NS` as blocking commitments, `roster` as the UNKNOWN trigger, and "next next week" meaning the week after next.
+
+**The grammar declines rather than guesses**, which is the load-bearing safety property — a confident wrong parse silently corrupts someone's availability:
+- **`cmi` requires a date reference.** It means both "cannot make it" *and* "poor quality" in Singlish, so "that plan cmi one" must not mark anyone unavailable.
+- Bare intent with no date ("can", "cannot lah") is declined — it answers nothing specific.
+- Conditionals, third-party statements ("she can only do school holidays"), and anything else unclaimed fall through to the LLM.
+- Negation beats affirmation when both match, since `cannot` contains `can`.
+
+Vocabulary was grounded in published Singlish references plus SG workplace/NS terms; direct Reddit access was blocked from the build environment, so **real group usage remains the untested variable** — worth reviewing which messages fall through to the LLM once the bot sits in a live chat, since that log is the natural source of missing vocabulary.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

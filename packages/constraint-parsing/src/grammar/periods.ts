@@ -95,6 +95,99 @@ function lastDay(year: number, month: number): number {
  * "next year" shifts forward one; otherwise the current year is used unless
  * that period has already ended, in which case it rolls to the next one.
  */
+function shift(date: ISODate, days: number): ISODate {
+  const [y, m, d] = date.split("-").map(Number);
+  const dt = new Date(Date.UTC(y!, m! - 1, d!));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+function dayOfWeek(date: ISODate): number {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay();
+}
+
+/**
+ * Relative expressions that dominate real group chat — "next week", "this
+ * weekend", and the distinctly Singaporean "next next week" meaning the week
+ * after next. Weeks run Monday to Sunday.
+ */
+export function findRelativePeriod(
+  text: string,
+  today: ISODate,
+): FoundPeriod | null {
+  const mondayOffset = -((dayOfWeek(today) + 6) % 7);
+  const thisMonday = shift(today, mondayOffset);
+
+  const weekRange = (weeksAhead: number): DateRange => ({
+    start: shift(thisMonday, weeksAhead * 7),
+    end: shift(thisMonday, weeksAhead * 7 + 6),
+  });
+
+  // Upcoming Saturday; if today is already the weekend, the current one.
+  const dow = dayOfWeek(today);
+  const daysToSaturday = dow === 0 ? -1 : 6 - dow;
+  const weekendRange = (weeksAhead: number): DateRange => ({
+    start: shift(today, daysToSaturday + weeksAhead * 7),
+    end: shift(today, daysToSaturday + 1 + weeksAhead * 7),
+  });
+
+  const patterns: { pattern: RegExp; label: string; range: () => DateRange }[] =
+    [
+      // Longest first: "next next week" must beat "next week".
+      {
+        pattern: /\bnext\s+next\s+week\b/i,
+        label: "the week after next",
+        range: () => weekRange(2),
+      },
+      {
+        pattern: /\bnext\s+weekend\b/i,
+        label: "next weekend",
+        range: () => weekendRange(1),
+      },
+      {
+        pattern: /\bthis\s+weekend\b/i,
+        label: "this weekend",
+        range: () => weekendRange(0),
+      },
+      {
+        pattern: /\bnext\s+week\b/i,
+        label: "next week",
+        range: () => weekRange(1),
+      },
+      {
+        pattern: /\bthis\s+week\b/i,
+        label: "this week",
+        range: () => weekRange(0),
+      },
+      {
+        pattern: /\bnext\s+month\b/i,
+        label: "next month",
+        range: () => {
+          const year = Number(today.slice(0, 4));
+          const month = Number(today.slice(5, 7));
+          const y = month === 12 ? year + 1 : year;
+          const m = month === 12 ? 1 : month + 1;
+          const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+          const pad = (v: number) => String(v).padStart(2, "0");
+          return { start: `${y}-${pad(m)}-01`, end: `${y}-${pad(m)}-${last}` };
+        },
+      },
+    ];
+
+  for (const { pattern, label, range } of patterns) {
+    const match = pattern.exec(text);
+    if (!match) continue;
+    return {
+      range: range(),
+      note: label,
+      start: match.index,
+      end: match.index + match[0].length,
+    };
+  }
+  return null;
+}
+
 export function findFuzzyPeriod(
   text: string,
   today: ISODate,
