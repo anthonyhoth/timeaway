@@ -110,14 +110,28 @@ export function renderTripCard(input: CardInput): string {
 
   const { feasible, nearMisses } = input.ranked;
 
-  if (feasible.length === 0 && nearMisses.length === 0) {
+  // Every window "works" before anyone has answered, since UNANSWERED never
+  // eliminates one — so calling the first of them a best match is nonsense.
+  // Until at least one person states dates, the card is an invitation.
+  const hasAnyDates = input.participants.some((p) => p.declarations.length > 0);
+
+  if (!hasAnyDates || (feasible.length === 0 && nearMisses.length === 0)) {
     lines.push(
-      "No dates yet — tell me when you're free and I'll work it out.",
+      "I'm listening in this chat now.",
       "",
-      "Just say things like “can't do October” or “max 2 days leave”.",
-      "",
-      input.tripUrl,
+      "Just talk about dates like you normally would — \u201ccmi October\u201d, " +
+        "\u201conly got 2 days AL\u201d, \u201croster not out yet\u201d — and I'll " +
+        "work out what fits.",
     );
+
+    // Acknowledge anything already heard that isn't a date, so the card never
+    // looks like it ignored someone.
+    const caps = input.participants
+      .filter((p) => p.maxLeaveDays !== null)
+      .map((p) => `${p.displayName} up to ${p.maxLeaveDays} leave days`);
+    if (caps.length > 0) lines.push("", `Noted so far: ${caps.join(", ")}`);
+
+    lines.push("", "/dates to see options · /pause to stop me reading", input.tripUrl);
     return lines.join("\n");
   }
 

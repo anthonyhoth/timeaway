@@ -177,12 +177,6 @@ export function createBot(token: string, deps: BotDeps): Bot {
       const trip = await getTripByShortCode(deps.db, payload.slice(5));
       if (trip) {
         await setTripChatId(deps.db, trip.id, String(ctx.chat.id));
-        await ctx.reply(
-          `${formatDestinations(trip.destinationCandidates ?? [])} — I'm listening here now.\n\n` +
-            "Just talk about dates like you normally would (\u201ccmi October\u201d, " +
-            "\u201conly got 2 days AL\u201d) and I'll work out what fits.\n" +
-            "/dates to see the best options · /pause to stop me reading.",
-        );
         await refreshTripCard(ctx, {
           ...trip,
           telegramChatId: String(ctx.chat.id),
@@ -249,8 +243,11 @@ export function createBot(token: string, deps: BotDeps): Bot {
     await ctx.reply("Back on — I'll watch for availability talk again.");
   });
 
-  bot.on("message:text", async (ctx) => {
-    if (!ctx.from || ctx.message.text.startsWith("/")) return;
+  bot.on("message:text", async (ctx, next) => {
+    if (!ctx.from) return;
+    // Hand commands onward: grammY stops the chain when middleware returns
+    // without calling next(), so anything registered below would never run.
+    if (ctx.message.text.startsWith("/")) return next();
 
     const state = wizards.get(keyOf(ctx.chat.id, ctx.from.id));
     const isWizardReply =

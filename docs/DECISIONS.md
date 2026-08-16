@@ -459,6 +459,24 @@ The principle: **state assumptions out loud, stay quiet about non-assumptions.**
 
 ---
 
+## Note (2026-08-17): /dates and /calendar were dead in groups — grammY middleware ordering
+
+**Symptom:** in the first real group session, `/dates@timeawaybot` produced no response at all, with nothing in the log.
+
+**Cause:** grammY runs middleware in registration order, and a handler that returns *without calling `next()`* terminates the chain. The catch-all `bot.on("message:text")` returned early for anything starting with `/`, and `/dates` and `/calendar` were registered **after** it — so they never ran. Commands registered before the catch-all (`/newtrip`, `/pause`, `/resume`, `/cancel`) worked, which is what made the failure look arbitrary.
+
+**Fix:** the catch-all now calls `next()` for command messages instead of returning, so registration order no longer decides whether a command works. Worth remembering when adding any future command.
+
+## Note (2026-08-17): the card claimed a "best match" before anyone had answered
+
+On joining a group the card read "Best match so far · 1–7 Nov 2027 · anthony — no dates yet", which is self-contradictory. The cause is a consequence of a correct engine rule: **UNANSWERED never eliminates a window** (brief §10 — do not require unanimous certainty), so before anyone answers, *every* window is feasible and the ranking simply returns the first.
+
+Feasibility was right; the presentation was not. The card now renders its invitation state until at least one participant has actually stated dates, regardless of how many windows technically qualify. It also acknowledges non-date input that has been heard — "Noted so far: anthony up to 10 leave days" — so the card never appears to have ignored someone who spoke.
+
+Related tidy-up: binding a trip to a group posted an intro message immediately followed by a near-identical card. It now posts the card alone, with the onboarding text living in the card's invitation state, so there is one message that later becomes the answer rather than two competing ones.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

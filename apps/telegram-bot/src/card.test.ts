@@ -48,6 +48,23 @@ function build(participants: ParticipantPlanningState[]) {
 }
 
 describe("renderTripCard", () => {
+  it("never claims a best match before anyone has shared dates", () => {
+    // Every window is technically feasible when all participants are
+    // UNANSWERED, so this guards against calling the first one a match.
+    const card = renderTripCard(
+      build([person("p1", "Anthony"), person("p2", "Mei")]),
+    );
+    expect(card).not.toContain("Best match so far");
+    expect(card).toContain("I'm listening in this chat now");
+  });
+
+  it("acknowledges a leave cap even with no dates yet", () => {
+    const card = renderTripCard(
+      build([person("p1", "Anthony", [], 10)]),
+    );
+    expect(card).toContain("Noted so far: Anthony up to 10 leave days");
+  });
+
   it("invites input when nobody has said anything", () => {
     const card = renderTripCard({
       destinations: [],
@@ -57,7 +74,7 @@ describe("renderTripCard", () => {
       participants: [],
       tripUrl: "https://timeaway.sg/t/abc123",
     });
-    expect(card).toContain("No dates yet");
+    expect(card).toContain("I'm listening in this chat now");
     expect(card).toContain("Destination open");
   });
 
