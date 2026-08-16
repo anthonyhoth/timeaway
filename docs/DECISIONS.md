@@ -507,6 +507,24 @@ Each renders **the founder's two options**: reshape the trip, or proceed without
 
 ---
 
+## Decision (2026-08-17, founder-directed): planning narrows in rounds — 5 options, then 3, then a date
+
+The founder set out the intended shape of the product loop: collect constraints, narrow to **five workable windows across the year**, present them, let the group react to *those*, narrow to **three**, and proceed from there. This replaces the previous behaviour of continuously showing one "best match" plus a couple of alternatives.
+
+**The change that made this work was diversity, not ranking.** Probing a year-long horizon showed the top five ranked windows were 1 Jan, then 4–8 Feb, 5–9 Feb and 6–10 Feb, then 6 Mar — three of the five being the same February week. Ranking optimises quality, and near-identical windows score near-identically, so an unfiltered top-N is a shortlist in name only; it gives the group nothing to choose between.
+
+`selectDiverseWindows` greedily walks the ranked list requiring a minimum separation, trying a month first and relaxing through 21/14/7/3/0 days only as far as needed to fill the quota. Where the group is genuinely free all year the five land in five different months; where only one stretch works it clusters, but never overlaps.
+
+**Rounds are explicit state.** `trips.shortlist_size` starts at 5 and the organiser narrows it to 3 with a button — matching the existing rule that only the organiser advances the trip. At 3, each option gets its own Select button, so choosing a date is one tap. The web trip page mirrors the same rounds.
+
+**Names survive the compaction.** A five-option list can't repeat everyone's status per option, but reducing people to counts would discard exactly the distinction the product exists for. Each option shows counts (`✅ 3 in · 1 leave`), and the named statuses — "Farah — roster not out yet" — appear once beneath.
+
+**Bug found while demoing the rounds:** with a 2027 horizon, "cannot december" resolved to December *2026*, because bare months were anchored to today rather than to the trip. The answer then landed outside the trip and read as a mismatch. Date resolution now prefers a reading that falls inside the horizon, shifting the year by one or two where that lands inside — but never overriding an explicit year, and never inventing an overlap that doesn't exist ("only June" against a November trip still correctly falls outside and is diagnosed).
+
+**Open question for the founder:** to produce "five windows in the year" the trip horizon has to *be* roughly a year, and the wizard currently takes whatever the organiser gives (often a single month). Nothing widens it automatically. Worth deciding whether an unknown or narrow horizon should default wider, versus asking.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

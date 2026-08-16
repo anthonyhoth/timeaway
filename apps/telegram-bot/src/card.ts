@@ -20,6 +20,10 @@ export interface CardInput {
   tripUrl: string;
   /** Structural mismatches between a person and the trip's current shape. */
   diagnostics?: readonly ParticipantDiagnostic[];
+  /** The current round's options, already spread across the horizon. */
+  shortlist?: readonly EvaluatedWindow[];
+  /** How many options this round offers — 5, then 3. */
+  shortlistSize?: number;
   /** Set once the organiser has confirmed; renders the settled state. */
   selected?: { start: string; end: string } | null;
 }
@@ -40,13 +44,28 @@ function joinNames(names: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
-function participantLines(
+/**
+ * People whose status needs naming — everyone except the plainly available,
+ * whose number is already shown against each option. Keeping the names is the
+ * point: "Farah — roster not out yet" is the distinction the product exists
+ * for, and a bare count would throw it away.
+ */
+function attentionLines(
   window: EvaluatedWindow,
   participants: readonly ParticipantPlanningState[],
 ): string[] {
+  return participantLines(window, participants, { includeCounts: false });
+}
+
+function participantLines(
+  window: EvaluatedWindow,
+  participants: readonly ParticipantPlanningState[],
+  options: { includeCounts?: boolean } = {},
+): string[] {
+  const includeCounts = options.includeCounts ?? true;
   const lines: string[] = [];
 
-  if (window.counts.available > 0) {
+  if (includeCounts && window.counts.available > 0) {
     lines.push(`✅ ${window.counts.available} can make it`);
   }
 
@@ -80,9 +99,11 @@ function participantLines(
     lines.push(`💬 ${joinNames(silent)} — no dates yet`);
   }
 
-  lines.push(
-    `🗓 ${window.leaveDays} leave ${window.leaveDays === 1 ? "day" : "days"}`,
-  );
+  if (includeCounts) {
+    lines.push(
+      `🗓 ${window.leaveDays} leave ${window.leaveDays === 1 ? "day" : "days"}`,
+    );
+  }
   return lines;
 }
 
@@ -193,24 +214,39 @@ export function renderTripCard(input: CardInput): string {
   }
 
   if (feasible.length > 0) {
-    const best = feasible[0]!;
-    lines.push(
-      "Best match so far",
-      `${formatDateRange(best.window.start, best.window.end)} · ${best.window.days} days`,
-      "",
-      ...participantLines(best, input.participants),
-    );
+    const options = input.shortlist ?? feasible.slice(0, input.shortlistSize ?? 5);
+    const size = input.shortlistSize ?? options.length;
 
-    const alternatives = feasible.slice(1, 3);
-    if (alternatives.length > 0) {
+    if (options.length === 1) {
+      const only = options[0]!;
+      lines.push(
+        "One window works for everyone",
+        `${formatDateRange(only.window.start, only.window.end)} · ${only.window.days} days`,
+        "",
+        ...participantLines(only, input.participants),
+      );
+    } else {
+      lines.push(
+        size <= 3
+          ? `Narrowed to ${options.length} — which works best?`
+          : `${options.length} windows work so far`,
+        "",
+      );
+      options.forEach((w, index) => {
+        const pending = w.counts.rosterPending > 0 ? ` · ${w.counts.rosterPending} roster pending` : "";
+        lines.push(
+          `${index + 1}. ${formatDateRange(w.window.start, w.window.end)} · ${w.window.days} days`,
+          `    ✅ ${w.counts.available} in · ${w.leaveDays} leave${pending}`,
+        );
+      });
+      const attention = attentionLines(options[0]!, input.participants);
+      if (attention.length > 0) lines.push("", ...attention);
+
       lines.push(
         "",
-        `Also works: ${alternatives
-          .map(
-            (w) =>
-              `${formatDateRange(w.window.start, w.window.end)} (${w.leaveDays} leave)`,
-          )
-          .join(" · ")}`,
+        size <= 3
+          ? "Pick one below, or say what still doesn't work."
+          : "Say what doesn't work and I'll narrow these down.",
       );
     }
   } else {

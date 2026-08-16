@@ -9,6 +9,7 @@ import {
   evaluateWindows,
   generateCandidateWindows,
   rankForDisplay,
+  selectDiverseWindows,
   SG_PUBLIC_HOLIDAYS,
 } from "@timeaway/trip-engine";
 import { Hono } from "hono";
@@ -113,9 +114,17 @@ export function createWebApp(deps: WebDeps): Hono {
 
     // Live planning data — never let a browser serve a stale copy. Telegram's
     // in-app browser in particular will happily cache HTML without this.
+    const shortlist = selectDiverseWindows(ranked.feasible, view.shortlistSize);
+
     c.header("Cache-Control", "no-store, must-revalidate");
     return c.html(
-      TripPage({ view, ranked, diagnostics, botUrl: deps.botUrl }) as string,
+      TripPage({
+        view,
+        ranked,
+        diagnostics,
+        shortlist,
+        botUrl: deps.botUrl,
+      }) as string,
     );
   });
 

@@ -116,6 +116,15 @@ export async function setTripChatId(
     .where(eq(trips.id, tripId));
 }
 
+/** Narrow the shortlist — 5 options down to 3, then to a chosen date. */
+export async function setShortlistSize(
+  db: Db,
+  tripId: string,
+  size: number,
+): Promise<void> {
+  await db.update(trips).set({ shortlistSize: size }).where(eq(trips.id, tripId));
+}
+
 export async function setAmbientPaused(
   db: Db,
   tripId: string,

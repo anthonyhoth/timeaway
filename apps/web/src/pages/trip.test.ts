@@ -10,6 +10,7 @@ const view = (overrides: Partial<PublicTripView> = {}): PublicTripView => ({
   horizonEnd: "2026-11-30",
   durationMinDays: 4,
   durationMaxDays: 5,
+  shortlistSize: 5,
   selectedStart: null,
   selectedEnd: null,
   participants: [],

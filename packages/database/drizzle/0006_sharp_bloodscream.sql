@@ -1,0 +1,1 @@
+ALTER TABLE "trips" ADD COLUMN "shortlist_size" integer DEFAULT 5 NOT NULL;

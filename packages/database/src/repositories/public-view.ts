@@ -29,6 +29,8 @@ export interface PublicTripView {
   horizonEnd: string | null;
   durationMinDays: number | null;
   durationMaxDays: number | null;
+  /** Options offered this round — 5, then 3. */
+  shortlistSize: number;
   selectedStart: string | null;
   selectedEnd: string | null;
   participants: PublicParticipant[];
@@ -58,6 +60,7 @@ export async function loadPublicTripView(
     horizonEnd: trip.horizonEnd,
     durationMinDays: trip.durationMinDays,
     durationMaxDays: trip.durationMaxDays,
+    shortlistSize: trip.shortlistSize,
     selectedStart: trip.selectedStart,
     selectedEnd: trip.selectedEnd,
     participants: participants.map((p) => ({

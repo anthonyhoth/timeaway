@@ -54,6 +54,10 @@ export const trips = pgTable(
   // Group chat this trip's ambient capture listens to (null for DM-created
   // trips). Telegram chat ids exceed 32 bits — stored as text.
   telegramChatId: text("telegram_chat_id"),
+  // How many options the group is currently choosing between. Planning
+  // narrows in rounds: a shortlist of 5 spread across the horizon, then the
+  // best 3 once people have reacted, then one selected date.
+  shortlistSize: integer("shortlist_size").notNull().default(5),
   // /pause turns ambient capture off for the group without ending the trip.
   ambientPaused: boolean("ambient_paused").notNull().default(false),
   // The live results card in the group chat, edited in place as availability

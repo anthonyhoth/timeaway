@@ -43,6 +43,13 @@
       "when": 1786890227535,
       "tag": "0005_complex_queen_noir",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786904673395,
+      "tag": "0006_sharp_bloodscream",
+      "breakpoints": true
     }
   ]
 }

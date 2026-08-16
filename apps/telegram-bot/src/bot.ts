@@ -22,6 +22,7 @@ import {
   setAmbientPaused,
   setCardMessageId,
   setLeaveCap,
+  setShortlistSize,
   setTripChatId,
   upsertTelegramUser,
 } from "@timeaway/database";
@@ -31,6 +32,7 @@ import {
   generateCandidateWindows,
   rankForDisplay,
   resolveRange,
+  selectDiverseWindows,
   SG_PUBLIC_HOLIDAYS,
 } from "@timeaway/trip-engine";
 import { renderTripCard } from "./card.js";
@@ -665,6 +667,11 @@ export function createBot(token: string, deps: BotDeps): Bot {
         ? { start: trip.selectedStart, end: trip.selectedEnd }
         : null;
 
+    // The round's options, spread across the horizon rather than three
+    // variations on the same week (see selectDiverseWindows).
+    const shortlistSize = trip.shortlistSize ?? 5;
+    const shortlist = selectDiverseWindows(ranked.feasible, shortlistSize);
+
     const text = renderTripCard({
       destinations: trip.destinationCandidates ?? [],
       durationMinDays: trip.durationMinDays,
@@ -674,16 +681,28 @@ export function createBot(token: string, deps: BotDeps): Bot {
       tripUrl: `${deps.publicBaseUrl}/t/${trip.shortCode}`,
       selected,
       diagnostics,
+      shortlist,
+      shortlistSize,
     });
 
-    const best = ranked.feasible[0];
-    const keyboard =
-      best && !selected
-        ? new InlineKeyboard().text(
-            `Select ${formatDateRange(best.window.start, best.window.end)}`,
-            `sel:${best.window.start}:${best.window.end}`,
-          )
-        : undefined;
+    let keyboard: InlineKeyboard | undefined;
+    if (!selected && shortlist.length > 0) {
+      keyboard = new InlineKeyboard();
+      if (shortlistSize > 3 && shortlist.length > 3) {
+        // Round one: the group reacts to the spread before choosing.
+        keyboard.text("Narrow to 3", "trip:narrow");
+      } else {
+        // Final round: one button per remaining option.
+        shortlist.forEach((w) => {
+          keyboard!
+            .text(
+              formatDateRange(w.window.start, w.window.end),
+              `sel:${w.window.start}:${w.window.end}`,
+            )
+            .row();
+        });
+      }
+    }
 
     if (trip.cardMessageId) {
       try {
@@ -708,6 +727,34 @@ export function createBot(token: string, deps: BotDeps): Bot {
     });
     await setCardMessageId(deps.db, trip.id, String(message.message_id));
   }
+
+  bot.callbackQuery("trip:narrow", async (ctx) => {
+    const trip = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat!.id),
+    );
+    if (!trip) {
+      await ctx.answerCallbackQuery("That trip is no longer active.");
+      return;
+    }
+    const presser = await upsertTelegramUser(deps.db, {
+      telegramUserId: String(ctx.from.id),
+      displayName: [ctx.from.first_name, ctx.from.last_name]
+        .filter(Boolean)
+        .join(" "),
+    });
+    if (presser.id !== trip.organiserId) {
+      await ctx.answerCallbackQuery({
+        text: "Only the organiser can narrow the options.",
+        show_alert: true,
+      });
+      return;
+    }
+    await setShortlistSize(deps.db, trip.id, 3);
+    await ctx.answerCallbackQuery("Narrowed to 3.");
+    const updated = await getTripById(deps.db, trip.id);
+    if (updated) await refreshTripCard(ctx, updated);
+  });
 
   bot.command("dates", async (ctx) => {
     if (!isGroup(ctx)) return;

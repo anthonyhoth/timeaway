@@ -84,12 +84,44 @@ function findLeaveCap(text: string): number | null {
   return null;
 }
 
-function findDateReference(text: string, today: string): FoundPeriod | null {
-  return (
+function shiftYears(period: FoundPeriod, years: number): FoundPeriod {
+  const bump = (d: string) => `${Number(d.slice(0, 4)) + years}${d.slice(4)}`;
+  return { ...period, range: { start: bump(period.range.start), end: bump(period.range.end) } };
+}
+
+/**
+ * Resolve the date a message refers to, preferring an answer that lands
+ * inside the trip's own window.
+ *
+ * Bare months are otherwise anchored to today: on a 2026 date, "december"
+ * means Dec 2026 even when the group is planning across 2027, which silently
+ * files the answer outside the trip. When a year shift lands inside the
+ * horizon, that reading is almost certainly what was meant.
+ */
+function findDateReference(
+  text: string,
+  today: string,
+  horizonStart?: string | null,
+  horizonEnd?: string | null,
+): FoundPeriod | null {
+  const found =
     findFuzzyPeriod(text, today) ??
     findRelativePeriod(text, today) ??
-    findMonthRange(text, today)
-  );
+    findMonthRange(text, today);
+  if (!found || !horizonStart || !horizonEnd) return found;
+
+  const overlaps = (p: FoundPeriod) =>
+    p.range.start <= horizonEnd && p.range.end >= horizonStart;
+  if (overlaps(found)) return found;
+
+  // An explicit year in the text is a deliberate statement — never override it.
+  if (/\b20\d{2}\b/.test(text)) return found;
+
+  for (const years of [1, 2]) {
+    const shifted = shiftYears(found, years);
+    if (overlaps(shifted)) return shifted;
+  }
+  return found;
 }
 
 /**
@@ -109,7 +141,12 @@ export function parseAvailabilityMessage(
   if (/\b(?:he|she|they|his|her)\b/i.test(text)) return null;
 
   const leaveCap = findLeaveCap(text);
-  const dateRef = findDateReference(text, ctx.today);
+  const dateRef = findDateReference(
+    text,
+    ctx.today,
+    ctx.horizonStart,
+    ctx.horizonEnd,
+  );
 
   // A leave cap stands alone — it constrains every window, not a date range.
   if (leaveCap !== null && !dateRef) {

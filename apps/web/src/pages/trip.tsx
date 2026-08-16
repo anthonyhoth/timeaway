@@ -84,11 +84,13 @@ export function TripPage({
   view,
   ranked,
   diagnostics = [],
+  shortlist,
   botUrl,
 }: {
   view: PublicTripView;
   ranked: RankedWindows;
   diagnostics?: readonly ParticipantDiagnostic[];
+  shortlist?: readonly EvaluatedWindow[];
   botUrl: string;
 }) {
   const destination = formatDestinations(view.destinationCandidates);
@@ -174,15 +176,15 @@ export function TripPage({
         )}
       </section>
 
-      {ranked.feasible.length > 1 && (
+      {(shortlist ?? []).length > 1 && (
         <section class="wrap" style="max-width:640px;padding:18px 0">
           <p
             style={`font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${BRAND.jetlag};margin-bottom:12px`}
           >
-            Also works
+            {view.shortlistSize <= 3 ? "Narrowed to these" : "Options so far"}
           </p>
           <div style="display:grid;gap:10px">
-            {ranked.feasible.slice(1, 4).map((w) => (
+            {(shortlist ?? []).slice(1).map((w) => (
               <div
                 class="card"
                 style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-radius:16px"

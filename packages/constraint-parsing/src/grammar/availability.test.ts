@@ -158,3 +158,37 @@ describe("parseAvailabilityMessage — does not over-claim a period", () => {
     });
   });
 });
+
+describe("year inference prefers the trip's own window", () => {
+  const y2027 = { today: "2026-08-17", horizonStart: "2027-01-01", horizonEnd: "2027-12-31" };
+
+  it("reads a bare month as the year the group is planning in", () => {
+    // Anchored to today this was Dec 2026 — outside a 2027 trip entirely.
+    expect(parseAvailabilityMessage("cannot december", y2027)?.declarations[0]).toMatchObject({
+      state: "UNAVAILABLE",
+      start: "2027-12-01",
+    });
+  });
+
+  it("leaves an explicit year alone", () => {
+    expect(parseAvailabilityMessage("cmi december 2026", y2027)?.declarations[0]).toMatchObject({
+      start: "2026-12-01",
+    });
+  });
+
+  it("does not invent an overlap that isn't there", () => {
+    // June never lands inside a November trip, so it stays outside and the
+    // engine's diagnostic surfaces the mismatch instead of a bogus shift.
+    const nov = {
+      today: "2026-08-17",
+      horizonStart: "2026-11-01",
+      horizonEnd: "2026-11-30",
+    };
+    const r = parseAvailabilityMessage("i can only travel in june", nov);
+    expect(
+      r?.declarations.some(
+        (d) => d.state === "AVAILABLE" && d.start.startsWith("2027-06"),
+      ),
+    ).toBe(true);
+  });
+});

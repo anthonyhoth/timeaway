@@ -78,7 +78,7 @@ describe("renderTripCard", () => {
     expect(card).toContain("Destination open");
   });
 
-  it("shows the best window with counts and leave days", () => {
+  it("offers a shortlist of distinct windows", () => {
     const card = renderTripCard(
       build([
         person("p1", "Anthony", [
@@ -89,9 +89,9 @@ describe("renderTripCard", () => {
         ]),
       ]),
     );
-    expect(card).toContain("Best match so far");
-    expect(card).toContain("✅ 2 can make it");
-    expect(card).toMatch(/🗓 \d+ leave days?/);
+    expect(card).toMatch(/\d windows work so far/);
+    expect(card).toMatch(/1\. .+ · \d days/);
+    expect(card).toMatch(/✅ \d in · \d+ leave/);
     expect(card).toContain("https://timeaway.sg/t/abc123");
   });
 
@@ -139,7 +139,7 @@ describe("renderTripCard", () => {
     expect(card).toContain("Shift a date or go without someone");
   });
 
-  it("lists alternative windows when several work", () => {
+  it("numbers each option so the group can point at one", () => {
     const card = renderTripCard(
       build([
         person("p1", "Anthony", [
@@ -147,7 +147,7 @@ describe("renderTripCard", () => {
         ]),
       ]),
     );
-    expect(card).toContain("Also works:");
+    expect(card).toMatch(/^2\. /m);
   });
 
   it("renders the confirmed state once dates are selected", () => {
