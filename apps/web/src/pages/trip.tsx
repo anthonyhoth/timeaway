@@ -1,5 +1,9 @@
 import type { PublicTripView } from "@timeaway/database";
-import type { EvaluatedWindow, RankedWindows } from "@timeaway/trip-engine";
+import type {
+  EvaluatedWindow,
+  ParticipantDiagnostic,
+  RankedWindows,
+} from "@timeaway/trip-engine";
 import { BRAND } from "../theme.js";
 import {
   formatDateRange,
@@ -79,16 +83,25 @@ function WindowCard({
 export function TripPage({
   view,
   ranked,
+  diagnostics = [],
   botUrl,
 }: {
   view: PublicTripView;
   ranked: RankedWindows;
+  diagnostics?: readonly ParticipantDiagnostic[];
   botUrl: string;
 }) {
   const destination = formatDestinations(view.destinationCandidates);
   const settled =
     view.status === "DATE_SELECTED" && view.selectedStart && view.selectedEnd;
-  const best = ranked.feasible[0] ?? ranked.nearMisses[0];
+  // Same rule as the bot card: every window is technically feasible before
+  // anyone answers, so calling the first one a match would be misleading.
+  const hasAnyDates = view.participants.some((p) => p.declarations.length > 0);
+  const best = hasAnyDates
+    ? (ranked.feasible[0] ?? ranked.nearMisses[0])
+    : undefined;
+  const nameOfIndex = (id: string) =>
+    view.participants[Number(id)]?.firstName ?? "Someone";
 
   return (
     <Layout
@@ -145,9 +158,18 @@ export function TripPage({
           <div class="card" style="border-radius:24px;padding:32px;text-align:center">
             <h2 style="font-size:24px;margin-bottom:10px">No dates yet</h2>
             <p class="muted" style="font-size:16px">
-              The group hasn’t shared availability yet. Say when you’re free in
-              the chat and this page updates.
+              Nobody has shared dates yet. Say when you’re free in the group
+              chat and this page updates.
             </p>
+            {view.participants.some((p) => p.maxLeaveDays !== null) && (
+              <p class="muted" style="font-size:15px;margin-top:16px">
+                Noted so far:{" "}
+                {view.participants
+                  .filter((p) => p.maxLeaveDays !== null)
+                  .map((p) => `${p.firstName} up to ${p.maxLeaveDays} leave days`)
+                  .join(", ")}
+              </p>
+            )}
           </div>
         )}
       </section>
@@ -173,6 +195,58 @@ export function TripPage({
                 </span>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {diagnostics.length > 0 && (
+        <section class="wrap" style="max-width:640px;padding:18px 0">
+          <p
+            style={`font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${BRAND.jetlag};margin-bottom:12px`}
+          >
+            Worth sorting out
+          </p>
+          <div style="display:grid;gap:10px">
+            {diagnostics.map((d) => {
+              const name = nameOfIndex(d.participantId);
+              if (d.kind === "LEAVE_CAP_BLOCKS_ALL") {
+                return (
+                  <div class="card" style="border-radius:16px;padding:18px 20px">
+                    <p style="font-weight:600;font-size:16px">
+                      {name} has {d.maxLeaveDays} leave{" "}
+                      {d.maxLeaveDays === 1 ? "day" : "days"}; the shortest
+                      option here costs {d.cheapestWindowLeave}.
+                    </p>
+                    <p class="muted" style="font-size:15px;margin-top:6px">
+                      {d.longestAffordableDays > 0
+                        ? `${name} could manage about ${d.longestAffordableDays} days — shorten the trip, or plan a short one with ${name} separately.`
+                        : `Shorten the trip, or plan this one without ${name}.`}
+                    </p>
+                  </div>
+                );
+              }
+              const elsewhere =
+                d.kind === "BLOCKED_ACROSS_HORIZON"
+                  ? d.availableElsewhere
+                  : d.statedRanges;
+              const said = elsewhere
+                .map((r) => formatDateRange(r.start, r.end))
+                .join(", ");
+              return (
+                <div class="card" style="border-radius:16px;padding:18px 20px">
+                  <p style="font-weight:600;font-size:16px">
+                    {said
+                      ? `${name} can’t do these dates, but said ${said} works.`
+                      : `${name} can’t do any of these dates.`}
+                  </p>
+                  <p class="muted" style="font-size:15px;margin-top:6px">
+                    {said
+                      ? `Move the trip, or plan this one without ${name}.`
+                      : `Widen the dates, or plan this one without ${name}.`}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

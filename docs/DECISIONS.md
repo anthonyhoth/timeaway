@@ -477,6 +477,36 @@ Related tidy-up: binding a trip to a group posted an intro message immediately f
 
 ---
 
+## Decision (2026-08-17, founder-directed): the engine diagnoses structural mismatches, and offers the two ways out
+
+The founder supplied four real scenarios. Running each through the live pipeline first showed **all four were mishandled, two of them silently** — a reminder that probing beats reasoning about parser behaviour.
+
+| scenario | before | after |
+| --- | --- | --- |
+| "teacher, only during school holidays" | `AVAILABLE` for the holiday block, but **"only" dropped**, so other dates stayed UNANSWERED and they were never excluded | horizon blocked, then the holiday window carved back in |
+| "nurse, roster only out next week" | `UNKNOWN` for **next week itself** — the wrong month entirely | `UNKNOWN` across the trip horizon |
+| "can only travel in June" (November trip) | `AVAILABLE` June, invisible to every window; looked like silence | horizon blocked, June retained, and diagnosed |
+| "only 1 day of leave" (7-day trip) | every window infeasible, no explanation | diagnosed with what they *could* manage |
+
+**New concept: participant diagnostics.** Ordinary per-window unavailability is what the ranking already handles. A *structural* mismatch is different — no choice of dates fixes it — and deserves to be stated once, with remedies:
+- `BLOCKED_ACROSS_HORIZON` — unavailable for every window; if they named dates outside the trip, those are surfaced ("Mei can't do these dates, but said 1–30 Jun 2027 works").
+- `LEAVE_CAP_BLOCKS_ALL` — no window of this length fits their leave. The engine computes `longestAffordableDuration`, so the card can say what they *could* do rather than only what they can't.
+- `ANSWERED_OUTSIDE_HORIZON` — everything they said falls outside the trip window, which would otherwise read as never having replied.
+
+Each renders **the founder's two options**: reshape the trip, or proceed without that person and optionally plan a separate shorter one. Consistent with the brief, Timeaway surfaces the trade-off and never resolves it.
+
+**Two parsing rules this required:**
+- **"Only" is restrictive.** It emits an `UNAVAILABLE` blanket over the horizon followed by the stated `AVAILABLE` window, letting latest-declaration-wins do the work. The stated range is recorded *as given* even when outside the horizon, so "only June" still remembers June. Without a known horizon the complement is unbounded, so the grammar declines.
+- **"Roster out next week" names when they'll know, not what they're unsure about.** Such messages now mark the *horizon* UNKNOWN rather than the mentioned date.
+
+**Bug caught while testing the diagnostics:** the blocked-everywhere check read raw declarations and so flagged the teacher, whose later `AVAILABLE` overrides the blanket block. It now asks the resolver (`assessParticipantWindow`) instead — the same latest-wins rule the rest of the engine uses. Any code inspecting declarations directly rather than resolving them is suspect.
+
+**Web trip page brought to parity, and stopped being cacheable.** The page still showed "Best match so far" with nobody having answered, ignored leave caps, and showed no diagnostics — the card fixes had not been mirrored. It also sent **no cache headers at all**, so browsers (Telegram's in-app one especially) could serve a stale copy, which is what the founder observed as the link "not updating". It now sends `Cache-Control: no-store, must-revalidate`.
+
+**Deferred:** "roster out next week" is stored only as UNKNOWN over the horizon; the *when they'll know* date is discarded. Capturing it would let the bot follow up at the right moment, which needs a scheduler and a schema column — worth doing, not yet done.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

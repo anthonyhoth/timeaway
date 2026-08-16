@@ -26,6 +26,7 @@ import {
   upsertTelegramUser,
 } from "@timeaway/database";
 import {
+  diagnoseParticipants,
   evaluateWindows,
   generateCandidateWindows,
   rankForDisplay,
@@ -626,24 +627,38 @@ export function createBot(token: string, deps: BotDeps): Bot {
       trip.durationMinDays !== null &&
       trip.durationMaxDays !== null;
 
+    const engineParticipants = participants.map((p) => ({
+      id: p.participantId,
+      declarations: p.declarations,
+      maxLeaveDays: p.maxLeaveDays ?? undefined,
+    }));
+
+    const windows = canCompute
+      ? generateCandidateWindows({
+          horizonStart: trip.horizonStart!,
+          horizonEnd: trip.horizonEnd!,
+          durationMinDays: trip.durationMinDays!,
+          durationMaxDays: trip.durationMaxDays!,
+        })
+      : [];
+
     const ranked = canCompute
       ? rankForDisplay(
-          evaluateWindows(
-            generateCandidateWindows({
-              horizonStart: trip.horizonStart!,
-              horizonEnd: trip.horizonEnd!,
-              durationMinDays: trip.durationMinDays!,
-              durationMaxDays: trip.durationMaxDays!,
-            }),
-            participants.map((p) => ({
-              id: p.participantId,
-              declarations: p.declarations,
-              maxLeaveDays: p.maxLeaveDays ?? undefined,
-            })),
-            SG_PUBLIC_HOLIDAYS,
-          ),
+          evaluateWindows(windows, engineParticipants, SG_PUBLIC_HOLIDAYS),
         )
       : { feasible: [], nearMisses: [] };
+
+    // Mismatches no choice of dates can fix — surfaced separately so the
+    // group can reshape the trip rather than stare at an empty result.
+    const diagnostics = canCompute
+      ? diagnoseParticipants({
+          participants: engineParticipants,
+          windows,
+          horizonStart: trip.horizonStart!,
+          horizonEnd: trip.horizonEnd!,
+          publicHolidays: SG_PUBLIC_HOLIDAYS,
+        })
+      : [];
 
     const selected =
       trip.status === "DATE_SELECTED" && trip.selectedStart && trip.selectedEnd
@@ -658,6 +673,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       participants,
       tripUrl: `${deps.publicBaseUrl}/t/${trip.shortCode}`,
       selected,
+      diagnostics,
     });
 
     const best = ranked.feasible[0];

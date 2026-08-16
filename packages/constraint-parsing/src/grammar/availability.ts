@@ -42,6 +42,22 @@ const UNKNOWN =
 const SUB_PERIOD_QUALIFIER =
   /\b(?:first|last|early|earlier|mid|middle|late|later|beginning|start|end|half|before|after|until|till|from)\b|\b\d{1,2}\s*(?:weeks?|wks?)\b/i;
 
+/**
+ * "Only" flips the meaning: "can only join during school holidays" is a
+ * restriction, not a plain availability. Dropping the word made the parser
+ * mark that period AVAILABLE while leaving every other date UNANSWERED, so
+ * the person was never excluded from dates they had just ruled out.
+ */
+const RESTRICTIVE = /\b(?:only|nothing but|just)\b/i;
+
+/**
+ * "Roster only out next week" names when they will *know*, not the dates
+ * they are unsure about. Reading the date literally marked next week itself
+ * UNKNOWN, which is about a different month entirely.
+ */
+const KNOWS_LATER =
+  /\b(?:out|release[ds]?|released|confirm(?:ed)?|know|fixed|available)\b[^.]{0,20}\b(?:next|by|after|in|on)\b/i;
+
 /** Obligations that read as hard unavailability in this segment. */
 const BLOCKING_COMMITMENT =
   /\b(?:reservist|ict|in ?camp|ns\b|exam(?:s)?|wedding|work trip|bto|attachment)\b/i;
@@ -112,6 +128,21 @@ export function parseAvailabilityMessage(
   if (SUB_PERIOD_QUALIFIER.test(text)) return null;
 
   const isUnknown = UNKNOWN.test(text);
+
+  // Roster-pending with a "when I'll know" date: the uncertainty covers the
+  // trip, not the date they mentioned. Without a horizon there is nothing
+  // sensible to mark, so decline rather than guess.
+  if (isUnknown && KNOWS_LATER.test(text)) {
+    if (!ctx.horizonStart || !ctx.horizonEnd) return null;
+    return {
+      relevant: true,
+      subjectName: null,
+      declarations: [
+        { state: "UNKNOWN", start: ctx.horizonStart, end: ctx.horizonEnd },
+      ],
+      maxLeaveDays: leaveCap,
+    };
+  }
   const isBlocked = BLOCKING_COMMITMENT.test(text);
   const isNegative = NEGATIVE.test(text);
   const isPositive = POSITIVE.test(text);
@@ -122,6 +153,36 @@ export function parseAvailabilityMessage(
   else if (isPositive) state = "AVAILABLE";
 
   if (state === null) return null;
+
+  // A restriction means everything else in the trip window is ruled out, so
+  // the complement has to be stated too. Without a horizon the complement is
+  // unbounded — decline instead of half-applying it.
+  if (RESTRICTIVE.test(text) && state === "AVAILABLE") {
+    if (!ctx.horizonStart || !ctx.horizonEnd) return null;
+    const declarations: ExtractionResult["declarations"] = [];
+    const from = dateRef.range.start > ctx.horizonStart ? dateRef.range.start : ctx.horizonStart;
+    const to = dateRef.range.end < ctx.horizonEnd ? dateRef.range.end : ctx.horizonEnd;
+
+    // Rule out the horizon first, then carve the stated window back in —
+    // latest-declaration-wins makes the ordering do the work.
+    declarations.push({
+      state: "UNAVAILABLE",
+      start: ctx.horizonStart,
+      end: ctx.horizonEnd,
+    });
+    // Record the stated window as given, even when it falls outside the trip.
+    // "I can only travel in June" against a November trip must still remember
+    // *June*, so the group can weigh moving the dates.
+    declarations.push({
+      state: "AVAILABLE",
+      start: dateRef.range.start,
+      end: dateRef.range.end,
+    });
+    void from;
+    void to;
+
+    return { relevant: true, subjectName: null, declarations, maxLeaveDays: leaveCap };
+  }
 
   // "cannot" and "can" both match the positive pattern's `can` — negation wins.
   if (isNegative && isPositive && !isUnknown) state = "UNAVAILABLE";

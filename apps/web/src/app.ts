@@ -5,6 +5,7 @@ import {
   loadPublicTripView,
 } from "@timeaway/database";
 import {
+  diagnoseParticipants,
   evaluateWindows,
   generateCandidateWindows,
   rankForDisplay,
@@ -79,27 +80,42 @@ export function createWebApp(deps: WebDeps): Hono {
       view.durationMinDays !== null &&
       view.durationMaxDays !== null;
 
+    const engineParticipants = view.participants.map((p, index) => ({
+      id: String(index),
+      declarations: p.declarations,
+      maxLeaveDays: p.maxLeaveDays ?? undefined,
+    }));
+
+    const windows = canCompute
+      ? generateCandidateWindows({
+          horizonStart: view.horizonStart!,
+          horizonEnd: view.horizonEnd!,
+          durationMinDays: view.durationMinDays!,
+          durationMaxDays: view.durationMaxDays!,
+        })
+      : [];
+
     const ranked = canCompute
       ? rankForDisplay(
-          evaluateWindows(
-            generateCandidateWindows({
-              horizonStart: view.horizonStart!,
-              horizonEnd: view.horizonEnd!,
-              durationMinDays: view.durationMinDays!,
-              durationMaxDays: view.durationMaxDays!,
-            }),
-            view.participants.map((p, index) => ({
-              id: String(index),
-              declarations: p.declarations,
-              maxLeaveDays: p.maxLeaveDays ?? undefined,
-            })),
-            SG_PUBLIC_HOLIDAYS,
-          ),
+          evaluateWindows(windows, engineParticipants, SG_PUBLIC_HOLIDAYS),
         )
       : { feasible: [], nearMisses: [] };
 
+    const diagnostics = canCompute
+      ? diagnoseParticipants({
+          participants: engineParticipants,
+          windows,
+          horizonStart: view.horizonStart!,
+          horizonEnd: view.horizonEnd!,
+          publicHolidays: SG_PUBLIC_HOLIDAYS,
+        })
+      : [];
+
+    // Live planning data — never let a browser serve a stale copy. Telegram's
+    // in-app browser in particular will happily cache HTML without this.
+    c.header("Cache-Control", "no-store, must-revalidate");
     return c.html(
-      TripPage({ view, ranked, botUrl: deps.botUrl }) as string,
+      TripPage({ view, ranked, diagnostics, botUrl: deps.botUrl }) as string,
     );
   });
 

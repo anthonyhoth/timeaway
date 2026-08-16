@@ -1,5 +1,9 @@
 import type { ParticipantPlanningState } from "@timeaway/database";
-import type { EvaluatedWindow, RankedWindows } from "@timeaway/trip-engine";
+import type {
+  EvaluatedWindow,
+  ParticipantDiagnostic,
+  RankedWindows,
+} from "@timeaway/trip-engine";
 import {
   formatDateRange,
   formatDestinations,
@@ -14,6 +18,8 @@ export interface CardInput {
   ranked: RankedWindows;
   participants: readonly ParticipantPlanningState[];
   tripUrl: string;
+  /** Structural mismatches between a person and the trip's current shape. */
+  diagnostics?: readonly ParticipantDiagnostic[];
   /** Set once the organiser has confirmed; renders the settled state. */
   selected?: { start: string; end: string } | null;
 }
@@ -77,6 +83,57 @@ function participantLines(
   lines.push(
     `🗓 ${window.leaveDays} leave ${window.leaveDays === 1 ? "day" : "days"}`,
   );
+  return lines;
+}
+
+/**
+ * Mismatches that no choice of dates can fix, each stated with the two ways
+ * out: reshape the trip, or go ahead without that person. The group decides —
+ * Timeaway only makes the trade-off visible.
+ */
+function diagnosticLines(input: CardInput): string[] {
+  const lines: string[] = [];
+
+  for (const d of input.diagnostics ?? []) {
+    const name = nameOf(input.participants, d.participantId);
+
+    if (d.kind === "ANSWERED_OUTSIDE_HORIZON") {
+      const said = d.statedRanges
+        .map((r) => formatDateRange(r.start, r.end))
+        .join(", ");
+      lines.push(
+        `⚠️ ${name} answered for ${said} — outside this trip.`,
+        `   Move the dates, or plan this one without ${name}.`,
+      );
+      continue;
+    }
+
+    if (d.kind === "BLOCKED_ACROSS_HORIZON") {
+      const elsewhere = d.availableElsewhere
+        .map((r) => formatDateRange(r.start, r.end))
+        .join(", ");
+      lines.push(
+        elsewhere
+          ? `⚠️ ${name} can't do these dates, but said ${elsewhere} works.`
+          : `⚠️ ${name} can't do any of these dates.`,
+        elsewhere
+          ? `   Move the trip to ${elsewhere}, or plan this one without ${name}.`
+          : `   Widen the dates, or plan this one without ${name}.`,
+      );
+      continue;
+    }
+
+    const affordable =
+      d.longestAffordableDays > 0
+        ? `${name} could manage about ${d.longestAffordableDays} days`
+        : `${name} can't spare leave for this`;
+    lines.push(
+      `⚠️ ${name} has ${d.maxLeaveDays} leave ${d.maxLeaveDays === 1 ? "day" : "days"};` +
+        ` the shortest option here costs ${d.cheapestWindowLeave}.`,
+      `   ${affordable} — shorten the trip, or keep this one and plan a short trip with ${name} separately.`,
+    );
+  }
+
   return lines;
 }
 
@@ -168,6 +225,9 @@ export function renderTripCard(input: CardInput): string {
       "Shift a date or go without someone — your call.",
     );
   }
+
+  const issues = diagnosticLines(input);
+  if (issues.length > 0) lines.push("", ...issues);
 
   lines.push("", input.tripUrl);
   return lines.join("\n");
