@@ -2,6 +2,7 @@ import type { ConstraintExtractor } from "@timeaway/constraint-parsing";
 import {
   mightContainConstraint,
   parseAvailabilityMessage,
+  isUnknownAnswer,
   parseDurationRange,
   parseTripRequest,
   resolveHorizon,
@@ -81,7 +82,12 @@ const HORIZON_PROMPT =
   "Roughly when could this trip happen?\n" +
   "e.g. Sep–Nov · next year · June–July 2027 · year end · Q1";
 
-const DURATION_PROMPT = "How many days? A range works best, e.g. 4–6";
+const DURATION_PROMPT =
+  "How many days? A range works best — e.g. 4–6, a long weekend, or a week.\n" +
+  "Not sure yet? Just say so.";
+
+/** Long weekend through a full week — used when the organiser can't say yet. */
+const DEFAULT_DURATION = { min: 3, max: 7 };
 
 const JOIN_MESSAGE =
   "Hey! I'm Timeaway — I help this group find trip dates that actually work.\n\n" +
@@ -353,7 +359,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     if (state.step === "destination") {
       const text = ctx.message.text.trim();
       state.destinations =
-        text.toLowerCase() === "skip"
+        text.toLowerCase() === "skip" || isUnknownAnswer(text)
           ? []
           : parseTripRequest(text, today()).destinations;
       state.askedDestination = true;
@@ -377,6 +383,17 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
 
     if (state.step === "duration") {
+      if (isUnknownAnswer(ctx.message.text)) {
+        state.durationMin = DEFAULT_DURATION.min;
+        state.durationMax = DEFAULT_DURATION.max;
+        await ctx.reply(
+          `No problem — I'll assume ${DEFAULT_DURATION.min}–${DEFAULT_DURATION.max} days ` +
+            "for now, anything from a long weekend to a week.",
+          { reply_parameters: { message_id: messageId } },
+        );
+        await finaliseTrip(ctx, state, messageId);
+        return;
+      }
       const duration = parseDurationRange(ctx.message.text);
       if (!duration) {
         await ctx.reply(

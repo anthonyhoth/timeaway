@@ -379,6 +379,23 @@ The horizon prompt now advertises what it actually accepts ("Sep–Nov · next y
 
 ---
 
+## Decision (2026-08-17): the wizard accepts "I don't know" at every step
+
+**Second bug from live testing.** Answering "idk yet" to "How many days?" looped on "Sorry, I didn't catch that". Probing it surfaced a worse, silent variant: **"idk yet" typed at the destination step created a trip to a place called "Idk Yet"** — a wrong answer accepted confidently, which is the failure mode this project has repeatedly treated as the one to avoid.
+
+Root cause is a design gap rather than a parsing gap. The wizard demanded a precise answer at every step from a product whose entire premise is tolerating uncertainty, and `/skip` only existed on the destination question, so the duration step had no escape at all.
+
+**Decisions:**
+- `isUnknownAnswer` recognises the forms people actually type (idk, dunno, not sure, no idea, tbc, whatever, up to you, flexible, no preference), tolerating Singlish particles, and is applied at **every** step rather than patched into one.
+- Destination unknown → the trip is simply destination-open, the same as `/skip`.
+- Duration unknown → **3–7 days is assumed and stated plainly**: "No problem — I'll assume 3–7 days for now, anything from a long weekend to a week." A duration is structurally required to generate candidate windows, so a stated assumption beats a dead end. The range spans long weekend to full week, which covers the realistic span for short-haul trips from Singapore.
+- Duration parsing also learned the phrasings people use instead of numbers: named durations ("a week", "long weekend", "weekend", "two weeks"), hedges ("about 5", "5ish", "maybe 4 to 6 days"), and spelled-out numbers ("four to six").
+- The prompt now offers the escape rather than hiding it: "Not sure yet? Just say so."
+
+**Follow-on gap, not yet addressed:** there is no way to change a trip's destination, horizon or duration after creation, so an assumed duration is currently permanent for that trip. The copy deliberately does not promise editing. Worth building an `/edit` path before real groups use this.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

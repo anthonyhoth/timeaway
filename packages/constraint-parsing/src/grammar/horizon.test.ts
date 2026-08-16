@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseDurationRange, resolveHorizon } from "./horizon.js";
+import {
+  isUnknownAnswer,
+  parseDurationRange,
+  resolveHorizon,
+} from "./horizon.js";
 
 // Monday 17 Aug 2026.
 const TODAY = "2026-08-17";
@@ -71,6 +75,51 @@ describe("parseDurationRange", () => {
   it("rejects nonsense", () => {
     expect(parseDurationRange("0-3")).toBeNull();
     expect(parseDurationRange("6-4")).toBeNull();
-    expect(parseDurationRange("a week")).toBeNull();
+    expect(parseDurationRange("99")).toBeNull();
+    expect(parseDurationRange("banana")).toBeNull();
+  });
+});
+
+describe("isUnknownAnswer — every wizard step needs this", () => {
+  it("recognises the ways people say they don't know", () => {
+    for (const t of [
+      "idk yet", "idk", "dunno", "dunno leh", "not sure", "no idea",
+      "don't know", "tbc", "whatever", "up to you", "flexible", "no preference",
+    ]) {
+      expect(isUnknownAnswer(t)).toBe(true);
+    }
+  });
+
+  it("does not swallow real answers", () => {
+    // "Open" alone means undecided, but a real place must never be mistaken
+    // for one — this is what turned "idk yet" into a trip to "Idk Yet".
+    for (const t of ["Japan", "Korea/Japan", "4-6", "a week", "Sep–Nov", "New Zealand"]) {
+      expect(isUnknownAnswer(t)).toBe(false);
+    }
+  });
+});
+
+describe("parseDurationRange — phrasings from live testing", () => {
+  it("understands named durations", () => {
+    expect(parseDurationRange("a week")).toEqual({ min: 7, max: 7 });
+    expect(parseDurationRange("long weekend")).toEqual({ min: 3, max: 4 });
+    expect(parseDurationRange("weekend")).toEqual({ min: 2, max: 3 });
+    expect(parseDurationRange("two weeks")).toEqual({ min: 14, max: 14 });
+  });
+
+  it("tolerates hedging", () => {
+    expect(parseDurationRange("about 5")).toEqual({ min: 5, max: 5 });
+    expect(parseDurationRange("5ish")).toEqual({ min: 5, max: 5 });
+    expect(parseDurationRange("maybe 4 to 6 days")).toEqual({ min: 4, max: 6 });
+    expect(parseDurationRange("roughly a week")).toEqual({ min: 7, max: 7 });
+  });
+
+  it("understands spelled-out numbers", () => {
+    expect(parseDurationRange("four to six")).toEqual({ min: 4, max: 6 });
+    expect(parseDurationRange("five days")).toEqual({ min: 5, max: 5 });
+  });
+
+  it("returns null for don't-know, which the caller handles separately", () => {
+    expect(parseDurationRange("idk yet")).toBeNull();
   });
 });
