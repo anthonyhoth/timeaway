@@ -16,11 +16,13 @@ import {
   ensureParticipantForTelegramUser,
   findActivePlanningTripByChatId,
   getTripById,
+  getTripByShortCode,
   loadTripPlanningState,
   selectTripDates,
   setAmbientPaused,
   setCardMessageId,
   setLeaveCap,
+  setTripChatId,
   upsertTelegramUser,
 } from "@timeaway/database";
 import {
@@ -139,6 +141,28 @@ export function createBot(token: string, deps: BotDeps): Bot {
   });
 
   bot.command("start", async (ctx) => {
+    const payload = (ctx.match ?? "").trim();
+
+    // Added to a group from a staged trip's "Add to group chat" button.
+    if (isGroup(ctx) && payload.startsWith("trip_")) {
+      const trip = await getTripByShortCode(deps.db, payload.slice(5));
+      if (trip) {
+        await setTripChatId(deps.db, trip.id, String(ctx.chat.id));
+        await ctx.reply(
+          `${formatDestinations(trip.destinationCandidates ?? [])} — I'm listening here now.\n\n` +
+            "Just talk about dates like you normally would (\u201ccmi October\u201d, " +
+            "\u201conly got 2 days AL\u201d) and I'll work out what fits.\n" +
+            "/dates to see the best options · /pause to stop me reading.",
+        );
+        await refreshTripCard(ctx, {
+          ...trip,
+          telegramChatId: String(ctx.chat.id),
+          cardMessageId: null,
+        });
+        return;
+      }
+    }
+
     await ctx.reply(
       "Hey! I help your group find trip dates that actually work.\n\n" +
         "/newtrip — start planning a trip\n" +
@@ -306,15 +330,42 @@ export function createBot(token: string, deps: BotDeps): Bot {
     });
     wizards.delete(keyOf(ctx.chat!.id, from.id));
 
+    const tripUrl = `${deps.publicBaseUrl}/t/${trip.shortCode}`;
+
+    if (!isGroup(ctx)) {
+      // A DM trip is staged, not live: ambient capture finds trips by chat, so
+      // until this one is bound to a group nobody can contribute anything.
+      // Say that plainly rather than celebrating, and hand over the one
+      // action that unblocks it.
+      await ctx.reply(
+        [
+          "Trip set up ✓",
+          "",
+          ...summaryLines(state),
+          "",
+          "Now add me to the group chat — that's where I pick up everyone's dates.",
+        ].join("\n"),
+        {
+          reply_parameters: { message_id: replyToId },
+          reply_markup: new InlineKeyboard()
+            .url(
+              "Add to group chat",
+              `https://t.me/${ctx.me.username}?startgroup=trip_${trip.shortCode}`,
+            )
+            .row()
+            .url("View trip page", tripUrl),
+        },
+      );
+      return;
+    }
+
     const lines = [
       "Trip created 🎉",
       "",
       ...summaryLines(state),
       "",
-      isGroup(ctx)
-        ? "Just talk dates in this chat — I'm listening. Friends elsewhere can use:"
-        : "Share it with your group:",
-      `${deps.publicBaseUrl}/t/${trip.shortCode}`,
+      "Just talk dates in this chat — I'm listening. Friends elsewhere can use:",
+      tripUrl,
     ];
     await ctx.reply(lines.join("\n"), {
       reply_parameters: { message_id: replyToId },

@@ -396,6 +396,29 @@ Root cause is a design gap rather than a parsing gap. The wizard demanded a prec
 
 ---
 
+## Decision (2026-08-17, founder-observed): a trip created in a DM is staged, not live, and must be bound to a group
+
+**Third finding from live testing, and the most substantive.** Completing the wizard in a one-to-one DM announced "Trip created 🎉" and handed over a share link, before any friend had been invited or any availability collected. The founder challenged whether that made sense.
+
+It did not, and the problem was deeper than premature copy. **A DM-created trip was functionally orphaned:**
+- `trips.telegram_chat_id` was null, and ambient capture finds trips *by chat* — so nothing anyone said anywhere could ever reach it.
+- `/dates` and `/calendar` are group-only.
+- The web trip page is read-only by design.
+
+So there was no path at all from that state to collecting a single constraint. The link resolved to a real page showing the destination, horizon and duration, and "No dates yet" — permanently, with no way to change it.
+
+**Decision: DM creation stages a trip; adding the bot to a group makes it live.**
+- The DM completion no longer celebrates. It says "Trip set up ✓", states what was captured, and explains the next step: "Now add me to the group chat — that's where I pick up everyone's dates."
+- The primary action is an **"Add to group chat" button** using Telegram's `?startgroup=trip_<shortCode>` deep link, which prompts a group picker, adds the bot, and delivers `/start trip_<shortCode>` to that group.
+- The `/start` handler binds the trip to that chat (`setTripChatId`, which also clears any stale card message id), confirms in the group, and posts the live card immediately.
+- Creating a trip *inside* a group is unchanged and still celebratory, because ambient capture genuinely does start working there at once.
+
+**Why this shape rather than making the web page writable:** the founder-directed model is that availability arrives through ordinary group conversation. A web input form would reintroduce the say-it-twice friction that motivated ambient capture in the first place. Staging in a DM and then binding to a group keeps a single path.
+
+**Also spotted:** the founder's `.env` still sets `PUBLIC_BASE_URL=https://gettimeaway.com`, so live trip links carry the old domain even though the code default is now `timeaway.sg`. Environment beats default; the `.env` needs updating.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

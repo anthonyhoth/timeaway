@@ -100,6 +100,22 @@ export async function findActivePlanningTripByChatId(
   return trip;
 }
 
+/**
+ * Bind a trip to the group chat it will be planned in. Trips created in a DM
+ * start unbound: ambient capture looks trips up *by chat*, so until this is
+ * set there is no path for anyone to contribute availability.
+ */
+export async function setTripChatId(
+  db: Db,
+  tripId: string,
+  telegramChatId: string,
+): Promise<void> {
+  await db
+    .update(trips)
+    .set({ telegramChatId, cardMessageId: null })
+    .where(eq(trips.id, tripId));
+}
+
 export async function setAmbientPaused(
   db: Db,
   tripId: string,
