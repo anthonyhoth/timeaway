@@ -11,6 +11,11 @@ import {
   SG_PUBLIC_HOLIDAYS,
 } from "@timeaway/trip-engine";
 import { Hono } from "hono";
+import {
+  ICON_PNG_BASE64,
+  MARK_PNG_BASE64,
+  WORD_PNG_BASE64,
+} from "./assets/generated.js";
 import { LandingPage } from "./pages/landing.js";
 import { TripPage } from "./pages/trip.js";
 
@@ -30,6 +35,30 @@ export interface WebDeps {
  */
 export function createWebApp(deps: WebDeps): Hono {
   const app = new Hono();
+
+  // Brand assets, cropped from the kit and inlined at build time. Decoded once
+  // here and served with immutable caching, so pages stay small.
+  const decode = (base64: string): Uint8Array =>
+    Uint8Array.from(Buffer.from(base64, "base64"));
+
+  const ASSETS: Record<string, Uint8Array> = {
+    "mark.png": decode(MARK_PNG_BASE64),
+    "wordmark.png": decode(WORD_PNG_BASE64),
+    "icon.png": decode(ICON_PNG_BASE64),
+  };
+
+  app.get("/assets/:file", (c) => {
+    const body = ASSETS[c.req.param("file")];
+    if (!body) return c.notFound();
+    return new Response(body, {
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=31536000, immutable",
+      },
+    });
+  });
+
+  app.get("/favicon.ico", (c) => c.redirect("/assets/icon.png", 301));
 
   app.get("/", (c) =>
     c.html(

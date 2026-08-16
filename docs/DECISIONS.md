@@ -305,7 +305,9 @@ Implementation notes:
 **Brand kit findings, and one thing that needs the founder:**
 - The kit resolves the logo (the folded-T from §23), the full palette, semantic colours that are darker than the brief's generic green/amber/red and clearly tuned for contrast, the Horizon gradient marked backgrounds-only, and UI tokens. Treated as authoritative where its neutrals differ slightly from §21's approximations, being the later and more specific artifact.
 - **Söhne is a commercial Klim typeface and needs a separate webfont licence.** The site ships Inter (free, and already the kit's body face) with Söhne first in the stack, so a licensed webfont takes over automatically if one is added. This is a founder purchase decision, not something to assume.
-- **The logo mark currently rendered in `layout.tsx` is a placeholder** — a geometric approximation drawn from the raster kit. The real vector should be exported from the kit and dropped in; a production logo must not be reverse-engineered from a PNG.
+- **The logo is the kit's own artwork, cropped — never redrawn** (founder instruction). `scripts/codegen-assets.ts` inlines the crops as base64 so they compile into `dist/` with no runtime file IO, and serves them from `/assets` with immutable caching plus a content-hash query string, so replacing artwork busts the cache automatically.
+- Extraction detail worth keeping: the kit's canvas is `#FCFCFC`, not Cloud `#FAFAF8`, so an opaque crop showed a faint box against the page. The mark and wordmark are un-composited off that known background (solving `P = a·C + (1−a)·B` per pixel) to get true transparency with anti-aliased edges intact. The app icon is cropped opaque instead — it contains *white* artwork, which that method would erase, since it assumes artwork darker than the background.
+- Using the kit's wordmark as artwork also sidesteps the Söhne licence for the logo itself: the lettering ships as an image rather than as live text in an unlicensed webfont.
 
 ---
 

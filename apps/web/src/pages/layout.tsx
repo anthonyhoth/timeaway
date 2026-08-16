@@ -1,46 +1,44 @@
 import type { PropsWithChildren } from "hono/jsx";
 import { html, raw } from "hono/html";
+import { ASSETS_VERSION } from "../assets/generated.js";
 import { BRAND, FONT_STACK } from "../theme.js";
 
 /**
- * Wordmark plus a geometric reading of the folded-T mark.
+ * The real logo, cropped from timeaway-brand-kit.png and served from
+ * /assets — never redrawn. Using the kit's own wordmark also sidesteps the
+ * Söhne licensing question, since the lettering ships as artwork rather than
+ * as live text in a font we don't hold a webfont grant for.
  *
- * PLACEHOLDER: this is an approximation drawn from the raster brand kit.
- * Export the real vector from the kit and drop it in — the shape should not
- * be reverse-engineered from a PNG for production.
+ * The crops keep the kit's Cloud background, which matches the page canvas.
  */
-export function Logo({ height = 28 }: { height?: number }) {
+export function Logo({ height = 30 }: { height?: number }) {
+  // Cropped mark is 140×130, wordmark 396×88 — tight bounds from the kit,
+  // background removed. Keeping both to their source
+  // aspect preserves the optical balance the kit already struck.
+  const markWidth = Math.round(height * (140 / 130));
+  const wordHeight = Math.round(height * (88 / 130));
+  const wordWidth = Math.round(wordHeight * (396 / 88));
   return (
-    <span style={`display:inline-flex;align-items:center;gap:10px`}>
-      <svg
-        viewBox="0 0 120 120"
-        width={height}
+    <a
+      href="/"
+      style="display:inline-flex;align-items:center;gap:10px;text-decoration:none"
+      aria-label="Timeaway home"
+    >
+      <img
+        src={`/assets/mark.png?v=${ASSETS_VERSION}`}
+        alt=""
+        width={markWidth}
         height={height}
-        aria-hidden="true"
         style="display:block"
-      >
-        <path
-          d="M14 34C14 18 25 8 40 8c15 0 20 11 20 26v20H38C23 54 14 48 14 34Z"
-          fill={BRAND.layover}
-        />
-        <path
-          d="M106 34c0-16-11-26-26-26-15 0-20 11-20 26v20h22c15 0 24-6 24-20Z"
-          fill={BRAND.layover}
-        />
-        <path d="M60 34v20H38Z" fill={BRAND.white} opacity="0.38" />
-        <path
-          d="M48 50h24v46c0 11-7 18-18 18-6 0-11-3-13-8"
-          stroke={BRAND.layover}
-          stroke-width="0"
-          fill={BRAND.layover}
-        />
-      </svg>
-      <span
-        style={`font-size:${Math.round(height * 0.86)}px;font-weight:700;letter-spacing:-0.02em;color:${BRAND.carryOn}`}
-      >
-        timeaway
-      </span>
-    </span>
+      />
+      <img
+        src={`/assets/wordmark.png?v=${ASSETS_VERSION}`}
+        alt="Timeaway"
+        width={wordWidth}
+        height={wordHeight}
+        style="display:block"
+      />
+    </a>
   );
 }
 
@@ -87,6 +85,8 @@ export function Layout({
         <meta property="og:description" content="${description}" />
         <meta property="og:type" content="website" />
         <meta name="theme-color" content="${BRAND.layover}" />
+        <link rel="icon" type="image/png" href="/assets/icon.png?v=${ASSETS_VERSION}" />
+        <link rel="apple-touch-icon" href="/assets/icon.png?v=${ASSETS_VERSION}" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
