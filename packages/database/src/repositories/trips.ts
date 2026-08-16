@@ -1,5 +1,5 @@
 import { generateShortCode } from "@timeaway/shared";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../client.js";
 import type { Trip } from "../schema/index.js";
 import { participants, trips } from "../schema/index.js";
@@ -11,6 +11,8 @@ export interface CreateTripInput {
   horizonEnd?: string | null;
   durationMinDays?: number | null;
   durationMaxDays?: number | null;
+  /** Group chat the trip was created in; enables ambient capture there. */
+  telegramChatId?: string | null;
 }
 
 function isShortCodeCollision(error: unknown): boolean {
@@ -44,6 +46,7 @@ export async function createTrip(db: Db, input: CreateTripInput): Promise<Trip> 
             horizonEnd: input.horizonEnd ?? null,
             durationMinDays: input.durationMinDays ?? null,
             durationMaxDays: input.durationMaxDays ?? null,
+            telegramChatId: input.telegramChatId ?? null,
           })
           .returning();
         await tx.insert(participants).values({
@@ -70,4 +73,38 @@ export async function getTripByShortCode(
     .from(trips)
     .where(eq(trips.shortCode, shortCode));
   return trip;
+}
+
+/**
+ * The trip whose ambient capture a group chat's messages feed: the most
+ * recently created PLANNING trip linked to that chat. One active trip per
+ * chat is the MVP assumption.
+ */
+export async function findActivePlanningTripByChatId(
+  db: Db,
+  telegramChatId: string,
+): Promise<Trip | undefined> {
+  const [trip] = await db
+    .select()
+    .from(trips)
+    .where(
+      and(
+        eq(trips.telegramChatId, telegramChatId),
+        eq(trips.status, "PLANNING"),
+      ),
+    )
+    .orderBy(desc(trips.createdAt))
+    .limit(1);
+  return trip;
+}
+
+export async function setAmbientPaused(
+  db: Db,
+  tripId: string,
+  paused: boolean,
+): Promise<void> {
+  await db
+    .update(trips)
+    .set({ ambientPaused: paused })
+    .where(eq(trips.id, tripId));
 }

@@ -1,0 +1,75 @@
+import { and, eq } from "drizzle-orm";
+import type { Db } from "../client.js";
+import type { Participant } from "../schema/index.js";
+import { availabilityDeclarations, participants } from "../schema/index.js";
+import { upsertTelegramUser } from "./users.js";
+
+/**
+ * Ambient auto-add (founder-decided): anyone in the group whose availability
+ * gets parsed becomes a participant. Upserts the Telegram-linked user, then
+ * finds or creates their participant row for the trip.
+ */
+export async function ensureParticipantForTelegramUser(
+  db: Db,
+  tripId: string,
+  input: { telegramUserId: string; displayName: string },
+): Promise<Participant> {
+  const user = await upsertTelegramUser(db, input);
+  const [existing] = await db
+    .select()
+    .from(participants)
+    .where(
+      and(eq(participants.tripId, tripId), eq(participants.userId, user.id)),
+    );
+  if (existing) return existing;
+  const [created] = await db
+    .insert(participants)
+    .values({ tripId, userId: user.id, role: "PARTICIPANT" })
+    .returning();
+  return created!;
+}
+
+export interface NlDeclarationInput {
+  state: "AVAILABLE" | "MAYBE" | "UNAVAILABLE" | "UNKNOWN";
+  startDate: string;
+  endDate: string;
+}
+
+/** Persist NL-derived declarations with their verbatim source sentence. */
+export async function addNlDeclarations(
+  db: Db,
+  participantId: string,
+  declarations: readonly NlDeclarationInput[],
+  originalText: string,
+): Promise<void> {
+  if (declarations.length === 0) return;
+  await db.insert(availabilityDeclarations).values(
+    declarations.map((d) => ({
+      participantId,
+      state: d.state,
+      startDate: d.startDate,
+      endDate: d.endDate,
+      source: "NATURAL_LANGUAGE" as const,
+      originalText,
+    })),
+  );
+}
+
+export async function setLeaveCap(
+  db: Db,
+  participantId: string,
+  maxLeaveDays: number,
+  sourceText: string,
+): Promise<void> {
+  await db
+    .update(participants)
+    .set({ maxLeaveDays, maxLeaveDaysSourceText: sourceText })
+    .where(eq(participants.id, participantId));
+}
+
+export async function listParticipants(
+  db: Db,
+  tripId: string,
+): Promise<Participant[]> {
+  return db.select().from(participants).where(eq(participants.tripId, tripId));
+}

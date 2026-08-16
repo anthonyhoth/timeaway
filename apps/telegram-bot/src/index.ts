@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { serve } from "@hono/node-server";
+import { OpenAiConstraintExtractor } from "@timeaway/constraint-parsing";
 import { createDb } from "@timeaway/database";
 import { webhookCallback } from "grammy";
 import { Hono } from "hono";
@@ -14,9 +15,17 @@ function requireEnv(name: string): string {
   return value;
 }
 
+const openaiKey = process.env.OPENAI_API_KEY;
+if (!openaiKey) {
+  console.warn(
+    "OPENAI_API_KEY not set — ambient capture will prefilter but extract nothing",
+  );
+}
+
 const bot = createBot(requireEnv("TELEGRAM_BOT_TOKEN"), {
   db: createDb(requireEnv("DATABASE_URL")),
   publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "https://gettimeaway.com",
+  extractor: openaiKey ? new OpenAiConstraintExtractor(openaiKey) : undefined,
 });
 
 // Webhook in production (Railway); polling for local dev, where Telegram
@@ -44,6 +53,8 @@ void bot.api
     { command: "newtrip", description: "Start planning a trip" },
     { command: "skip", description: "Skip the current wizard question" },
     { command: "cancel", description: "Abandon the current trip setup" },
+    { command: "pause", description: "Stop reading this chat" },
+    { command: "resume", description: "Resume reading this chat" },
   ])
   .catch((err) => console.error("setMyCommands failed", err));
 

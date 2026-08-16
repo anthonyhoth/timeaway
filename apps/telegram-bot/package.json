@@ -12,6 +12,7 @@
     "webhook:set": "tsx src/scripts/set-webhook.ts"
   },
   "dependencies": {
+    "@timeaway/constraint-parsing": "workspace:*",
     "@timeaway/database": "workspace:*",
     "@timeaway/shared": "workspace:*",
     "@timeaway/trip-engine": "workspace:*",

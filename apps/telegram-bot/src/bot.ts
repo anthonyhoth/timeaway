@@ -1,6 +1,17 @@
-import type { Db } from "@timeaway/database";
-import { createTrip, upsertTelegramUser } from "@timeaway/database";
+import type { ConstraintExtractor } from "@timeaway/constraint-parsing";
+import { mightContainConstraint } from "@timeaway/constraint-parsing";
+import type { Db, Trip } from "@timeaway/database";
+import {
+  addNlDeclarations,
+  createTrip,
+  ensureParticipantForTelegramUser,
+  findActivePlanningTripByChatId,
+  setAmbientPaused,
+  setLeaveCap,
+  upsertTelegramUser,
+} from "@timeaway/database";
 import type { ISODate } from "@timeaway/shared";
+import type { Context } from "grammy";
 import { Bot } from "grammy";
 import { formatDateRange, formatDuration } from "./format.js";
 import { parseDurationRange, parseHorizon } from "./parse.js";
@@ -9,6 +20,8 @@ export interface BotDeps {
   db: Db;
   /** e.g. https://gettimeaway.com — trip links are `${base}/t/${shortCode}`. */
   publicBaseUrl: string;
+  /** Absent = ambient capture runs prefilter-only and extracts nothing. */
+  extractor?: ConstraintExtractor;
   /** Injectable for tests; defaults to today in Singapore time. */
   today?: () => ISODate;
 }
@@ -36,13 +49,17 @@ const HORIZON_PROMPT =
 
 const DURATION_PROMPT = "How many days? A range works best, e.g. 4–6";
 
-/**
- * Every prompt uses ForceReply: the bot stays in Telegram's default privacy
- * mode (it does NOT read group conversations — founder-decided, see
- * docs/DECISIONS.md), and privacy mode still delivers replies to the bot's
- * own messages. ForceReply makes the user's next message exactly that.
- * `selective` keeps the reply UI on the wizard user only in group chats.
- */
+const JOIN_MESSAGE =
+  "Hey! I'm Timeaway — I help this group find trip dates that actually work.\n\n" +
+  "I'll quietly watch this chat for availability talk (\"can't do October\", " +
+  "\"max 2 days leave\") once a trip is being planned — I keep only what's " +
+  "about dates, nothing else. /pause stops me anytime.\n\n" +
+  "/newtrip — start planning a trip";
+
+function isGroup(ctx: Context): boolean {
+  return ctx.chat?.type === "group" || ctx.chat?.type === "supergroup";
+}
+
 function forceReply(messageId: number, placeholder: string) {
   return {
     reply_parameters: { message_id: messageId },
@@ -58,8 +75,11 @@ function forceReply(messageId: number, placeholder: string) {
  * Thin adapter only: parses input, calls repositories, formats replies.
  * Planning logic lives in @timeaway/trip-engine — never here (AGENTS.md).
  *
- * Wizard state is in-memory, keyed by chat+user: fine for a single service
- * instance (the MVP deployment), lost on restart — see docs/DECISIONS.md.
+ * Ambient capture (founder-decided, docs/DECISIONS.md): group messages flow
+ * through a deterministic prefilter, then LLM extraction. Non-matching
+ * messages are discarded here and never stored. Successful parses get a ✍
+ * reaction; declarations and leave caps persist against the auto-added
+ * participant.
  */
 export function createBot(token: string, deps: BotDeps): Bot {
   const bot = new Bot(token);
@@ -67,6 +87,16 @@ export function createBot(token: string, deps: BotDeps): Bot {
   const wizards = new Map<string, WizardState>();
 
   const keyOf = (chatId: number, userId: number) => `${chatId}:${userId}`;
+
+  bot.on("my_chat_member", async (ctx) => {
+    const status = ctx.myChatMember.new_chat_member.status;
+    const wasOut = ["left", "kicked"].includes(
+      ctx.myChatMember.old_chat_member.status,
+    );
+    if (isGroup(ctx) && wasOut && status === "member") {
+      await ctx.reply(JOIN_MESSAGE);
+    }
+  });
 
   bot.command("start", async (ctx) => {
     await ctx.reply(
@@ -103,22 +133,46 @@ export function createBot(token: string, deps: BotDeps): Bot {
     await ctx.reply(existed ? "Trip setup abandoned." : "Nothing to cancel.");
   });
 
+  bot.command("pause", async (ctx) => {
+    if (!isGroup(ctx)) return;
+    const trip = await findActivePlanningTripByChatId(deps.db, String(ctx.chat.id));
+    if (!trip) return;
+    await setAmbientPaused(deps.db, trip.id, true);
+    await ctx.reply("Paused — I'm not reading this chat. /resume when you want me back.");
+  });
+
+  bot.command("resume", async (ctx) => {
+    if (!isGroup(ctx)) return;
+    const trip = await findActivePlanningTripByChatId(deps.db, String(ctx.chat.id));
+    if (!trip) return;
+    await setAmbientPaused(deps.db, trip.id, false);
+    await ctx.reply("Back on — I'll watch for availability talk again.");
+  });
+
   bot.on("message:text", async (ctx) => {
     if (!ctx.from || ctx.message.text.startsWith("/")) return;
-    const state = wizards.get(keyOf(ctx.chat.id, ctx.from.id));
-    if (!state) return; // not mid-wizard
 
-    // In group chats, only consume messages aimed at the bot's prompts —
-    // never ambient conversation. (With privacy mode on Telegram already
-    // enforces this; this guard keeps it true even if the bot is an admin.)
-    if (
-      ctx.chat.type !== "private" &&
-      ctx.message.reply_to_message?.from?.id !== ctx.me.id
-    ) {
+    const state = wizards.get(keyOf(ctx.chat.id, ctx.from.id));
+    const isWizardReply =
+      state !== undefined &&
+      (ctx.chat.type === "private" ||
+        ctx.message.reply_to_message?.from?.id === ctx.me.id);
+
+    if (isWizardReply) {
+      await handleWizardStep(ctx, state);
       return;
     }
 
-    const messageId = ctx.msg.message_id;
+    if (isGroup(ctx)) {
+      await handleAmbientMessage(ctx);
+    }
+  });
+
+  async function handleWizardStep(
+    ctx: Context & { message: { text: string } },
+    state: WizardState,
+  ): Promise<void> {
+    const messageId = ctx.msg!.message_id;
 
     if (state.step === "destination") {
       const text = ctx.message.text.trim();
@@ -154,7 +208,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       return;
     }
 
-    const from = ctx.from;
+    const from = ctx.from!;
     const displayName = [from.first_name, from.last_name]
       .filter(Boolean)
       .join(" ");
@@ -169,8 +223,9 @@ export function createBot(token: string, deps: BotDeps): Bot {
       horizonEnd: state.horizonEnd,
       durationMinDays: duration.min,
       durationMaxDays: duration.max,
+      telegramChatId: isGroup(ctx) ? String(ctx.chat!.id) : null,
     });
-    wizards.delete(keyOf(ctx.chat.id, ctx.from.id));
+    wizards.delete(keyOf(ctx.chat!.id, from.id));
 
     const lines = [
       "Trip created 🎉",
@@ -179,14 +234,80 @@ export function createBot(token: string, deps: BotDeps): Bot {
       formatDateRange(state.horizonStart!, state.horizonEnd!),
       formatDuration(duration.min, duration.max),
       "",
-      "Share it with your group:",
+      isGroup(ctx)
+        ? "Just talk dates in this chat — I'm listening. Friends elsewhere can use:"
+        : "Share it with your group:",
       `${deps.publicBaseUrl}/t/${trip.shortCode}`,
     ];
     await ctx.reply(lines.join("\n"), {
       reply_parameters: { message_id: messageId },
       link_preview_options: { is_disabled: true },
     });
-  });
+  }
+
+  async function handleAmbientMessage(
+    ctx: Context & { message: { text: string } },
+  ): Promise<void> {
+    const text = ctx.message.text;
+    // Stage 1: free deterministic gate. Failing messages are dropped here —
+    // never logged, never stored ("reads ≠ stores").
+    if (!mightContainConstraint(text)) return;
+    if (!deps.extractor) return;
+
+    const trip = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat!.id),
+    );
+    if (!trip || trip.ambientPaused) return;
+
+    let result;
+    try {
+      result = await deps.extractor.extract(text, {
+        today: today(),
+        horizonStart: trip.horizonStart,
+        horizonEnd: trip.horizonEnd,
+        destination: trip.destination,
+      });
+    } catch (error) {
+      console.error("extraction failed", error);
+      return;
+    }
+    if (!result.relevant) return;
+    // Third-party relays ("Sheryl can only do school holidays") need identity
+    // resolution we don't have yet — skip rather than guess. TODO(task 8+).
+    if (result.subjectName) return;
+    if (result.declarations.length === 0 && result.maxLeaveDays === null) return;
+
+    const from = ctx.from!;
+    const participant = await ensureParticipantForTelegramUser(deps.db, trip.id, {
+      telegramUserId: String(from.id),
+      displayName: [from.first_name, from.last_name].filter(Boolean).join(" "),
+    });
+
+    if (result.declarations.length > 0) {
+      await addNlDeclarations(
+        deps.db,
+        participant.id,
+        result.declarations.map((d) => ({
+          state: d.state,
+          startDate: d.start,
+          endDate: d.end,
+        })),
+        text,
+      );
+    }
+    if (result.maxLeaveDays !== null) {
+      await setLeaveCap(deps.db, participant.id, result.maxLeaveDays, text);
+    }
+
+    // Ack without noise (founder-decided): react, don't reply. The live trip
+    // card (task 10) will pick these up on its next update.
+    try {
+      await ctx.react("✍");
+    } catch (error) {
+      console.error("reaction failed", error);
+    }
+  }
 
   bot.catch((err) => {
     console.error("bot error", err.error);
@@ -194,3 +315,5 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
   return bot;
 }
+
+export type { Trip };

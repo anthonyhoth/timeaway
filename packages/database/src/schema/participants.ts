@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  integer,
   pgEnum,
   pgTable,
   text,
@@ -32,6 +33,10 @@ export const participants = pgTable(
     userId: uuid("user_id").references(() => users.id),
     inviteName: text("invite_name"),
     role: participantRole("role").notNull().default("PARTICIPANT"),
+    // "Max 2 days leave" — a hard cap the engine treats as a constraint
+    // (brief section 10). Source text preserved per the auditability rule.
+    maxLeaveDays: integer("max_leave_days"),
+    maxLeaveDaysSourceText: text("max_leave_days_source_text"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

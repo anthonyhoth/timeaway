@@ -158,6 +158,18 @@ Related flow decision implied by privacy mode + link-passthrough: participants p
 
 ---
 
+## Decision (2026-08-16, founder-decided): LLM provider for constraint extraction is OpenAI gpt-5.6-luna
+
+The ambient extraction pipeline uses **OpenAI's `gpt-5.6-luna`** (GA July 2026; the fast/cheap tier of the GPT-5.6 family — $0.20/M input, $1.20/M output, strict structured outputs, `reasoning_effort` low). Founder's explicit choice. Cost profile fits high-volume group-chat triage well.
+
+Implementation notes (agent, recorded):
+- The extractor sits behind a `ConstraintExtractor` interface in `packages/constraint-parsing`; the provider is one file and can be swapped without touching the bot or engine. Section 26's division is unchanged: the LLM parses text into structured declarations — feasibility, intersection, and ranking remain deterministic TypeScript.
+- Prefilter (stage 1) and extraction (stages 2+3 merged into a single Luna call with a `relevant` flag) — one round-trip per candidate message keeps latency and cost down; the deterministic prefilter discards most chatter before any spend.
+- Third-party relays ("Sheryl can only do school holidays") are recognised by the schema (`subjectName`) but deliberately skipped at MVP — resolving a spoken name to a group member identity is deferred rather than guessed.
+- Missing `OPENAI_API_KEY` degrades gracefully: the bot runs, ambient capture prefilters but extracts nothing.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

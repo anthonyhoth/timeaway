@@ -1,5 +1,7 @@
 import {
+  boolean,
   date,
+  index,
   integer,
   pgEnum,
   pgTable,
@@ -22,7 +24,9 @@ export const tripStatus = pgEnum("trip_status", [
   "ARCHIVED",
 ]);
 
-export const trips = pgTable("trips", {
+export const trips = pgTable(
+  "trips",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   // Public share slug for gettimeaway.com/t/<shortCode> — link-passthrough is
   // the distribution model (docs/DECISIONS.md), so every trip is linkable.
@@ -43,6 +47,11 @@ export const trips = pgTable("trips", {
   // Set when status reaches DATE_SELECTED.
   selectedStart: date("selected_start"),
   selectedEnd: date("selected_end"),
+  // Group chat this trip's ambient capture listens to (null for DM-created
+  // trips). Telegram chat ids exceed 32 bits — stored as text.
+  telegramChatId: text("telegram_chat_id"),
+  // /pause turns ambient capture off for the group without ending the trip.
+  ambientPaused: boolean("ambient_paused").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -50,7 +59,9 @@ export const trips = pgTable("trips", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
-});
+  },
+  (t) => [index("trips_telegram_chat_id").on(t.telegramChatId)],
+);
 
 export type Trip = typeof trips.$inferSelect;
 export type NewTrip = typeof trips.$inferInsert;
