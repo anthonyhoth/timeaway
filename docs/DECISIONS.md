@@ -93,6 +93,25 @@ Implementation shape for brief section 28 task 3, recorded because each point is
 
 ---
 
+## Decision (2026-08-16, founder-decided): window-level classification, feasibility, and ranking semantics
+
+The founder ruled directly on window classification, and confirmed the remaining three proposals in the same exchange. These are product semantics, not implementation details — do not change without a new founder decision.
+
+**Per-participant classification of a candidate window (founder ruling):**
+
+- AVAILABLE is strict: every single day in the window must be explicitly AVAILABLE. No exceptions.
+- Any MAYBE or UNKNOWN day → the participant is MAYBE for the window. The engine preserves per-state day counts so display can distinguish UNKNOWN-driven maybe ("roster pending") from declared maybe — collapsing them in output would surrender the core differentiator.
+- Any UNAVAILABLE day → UNAVAILABLE for the window, dominating everything else.
+- Every day UNANSWERED → UNANSWERED ("hasn't responded"); answered-with-gaps → MAYBE with the gap counted. Silent non-responders stay visibly distinct from uncertain responders.
+
+**Feasibility (founder-confirmed):** a window is eliminated iff at least one participant is UNAVAILABLE for it — via declared days or via a leave cap ("max 2 days leave" makes windows costing more leave UNAVAILABLE for that participant). MAYBE, roster-pending, and UNANSWERED never eliminate; planning proceeds without unanimous certainty. "Plan without X" is the future relaxation path.
+
+**Ranking (founder-confirmed):** transparent lexicographic order, no weighted score — most clear-cut AVAILABLE participants → fewest leave days → fewest roster-pending → fewest MAYBE → earliest start → shortest duration. Every rank position must be explainable in one sentence.
+
+**Leave computation (agent assumption, recorded):** leave cost = Mon–Fri days in the window that are not Singapore gazetted public holidays; weekend is Sat/Sun. The holiday set is injected data — the engine ships the MOM 2026 table (`SG_PUBLIC_HOLIDAYS_2026`) with Sunday-holiday observed Mondays listed explicitly. The 2027 list must be appended when MOM gazettes it (typically mid-year); coverage boundary is exported as `SG_HOLIDAY_COVERAGE_END`. One shared holiday calendar per trip at MVP — per-participant calendars (mixed-country groups) are a later concern.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
