@@ -254,6 +254,25 @@ The general lesson, now encoded in tests: **the grammar's failure mode must be d
 
 ---
 
+## Decision (2026-08-16, founder-decided): inline calendar is three taps per range; date-painting is not possible in Telegram
+
+The founder asked whether the calendar could support **date-painting** (dragging across days), and instructed not to build it if the answer was per-day buttons. The honest platform answer: **Telegram inline keyboards are discrete buttons only** — every tap is a separate `callback_query`, and there is no drag, swipe, gesture, or multi-select. Painting is impossible in a native inline keyboard, full stop.
+
+What is possible, and what was built: brief §12's design — pick a mode, tap the start, tap the end, and the range is stored. Nine days cost three taps, not nine, and the calendar never becomes "31 independent decisions". Founder approved on that basis.
+
+Real painting would require a **Mini App** (a webview with touch handlers), which §29 excludes. Note that §2 names the precise trigger for revisiting: *"Mini App only becomes justified if the Telegram button-calendar becomes a proven usability bottleneck."* That evidence does not exist yet — no real group has used the button calendar — so building one now would be deciding ahead of the data.
+
+**The calendar's role has shifted since the brief was written.** Ambient capture now absorbs the common cases ("cmi nov" is one message and zero taps), so the calendar is no longer the primary input path — it is the **precision fallback** for exactly what the grammar deliberately declines, such as "first two weeks of Nov". That is a much smaller job than the brief envisaged, which is what makes three taps acceptable.
+
+Implementation notes:
+- Rendering is pure (`renderCalendarKeyboard` returns button rows), so grid layout, Monday-first weeks, horizon-bounded navigation, and the 64-byte callback-payload limit are all unit-tested without Telegram.
+- Days the user already answered carry compact markers (`9✕`, `10✓`, `11~`, `12?`) so the calendar shows current state rather than a blank grid; the pending start renders as `[9]`.
+- Navigation is bounded by the trip horizon — no wandering years away.
+- Calendar state is keyed **by message**, and only the user who opened it can tap; anyone else gets an explanatory alert. This matters in group chats where the message is visible to everyone.
+- Ranges persist as `source: CALENDAR` declarations — identical shape to natural-language ones, per §12's requirement that both paths produce the same records — and the trip card refreshes immediately after each save.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

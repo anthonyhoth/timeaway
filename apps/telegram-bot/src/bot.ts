@@ -6,8 +6,10 @@ import {
 } from "@timeaway/constraint-parsing";
 import type { Db, Trip } from "@timeaway/database";
 import {
+  addCalendarDeclaration,
   addNlDeclarations,
   createTrip,
+  listDeclarations,
   ensureParticipantForTelegramUser,
   findActivePlanningTripByChatId,
   getTripById,
@@ -22,9 +24,18 @@ import {
   evaluateWindows,
   generateCandidateWindows,
   rankForDisplay,
+  resolveRange,
   SG_PUBLIC_HOLIDAYS,
 } from "@timeaway/trip-engine";
 import { renderTripCard } from "./card.js";
+import type { CalendarState } from "./calendar.js";
+import {
+  calendarCaption,
+  MODE_BY_CODE,
+  monthStart,
+  orderRange,
+  renderCalendarKeyboard,
+} from "./calendar.js";
 import type { ISODate } from "@timeaway/shared";
 import type { Context } from "grammy";
 import { Bot, InlineKeyboard } from "grammy";
@@ -596,6 +607,179 @@ export function createBot(token: string, deps: BotDeps): Bot {
     await ctx.answerCallbackQuery("Dates confirmed 🎉");
     const updated = await getTripById(deps.db, trip.id);
     if (updated) await refreshTripCard(ctx, updated);
+  });
+
+  // ---- Inline calendar ---------------------------------------------------
+  // Telegram has no drag or gesture support, so a range is three taps: mode,
+  // start, end (brief §12). State is keyed by message so a shared group card
+  // stays usable only by whoever opened it.
+  interface OpenCalendar {
+    ownerId: number;
+    tripId: string;
+    participantId: string;
+    horizonStart: ISODate;
+    horizonEnd: ISODate;
+    state: CalendarState;
+  }
+  const calendars = new Map<string, OpenCalendar>();
+  const calendarKey = (chatId: number, messageId: number) =>
+    `${chatId}:${messageId}`;
+
+  async function drawCalendar(
+    ctx: Context,
+    open: OpenCalendar,
+    messageId: number,
+  ): Promise<void> {
+    const declarations = await listDeclarations(deps.db, open.participantId);
+    const anchor = open.state.monthAnchor;
+    const monthEnd = `${anchor.slice(0, 7)}-${String(
+      new Date(
+        Date.UTC(Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)), 0),
+      ).getUTCDate(),
+    ).padStart(2, "0")}`;
+    const existing = resolveRange(declarations, anchor, monthEnd);
+
+    const rows = renderCalendarKeyboard(open.state, existing, {
+      min: open.horizonStart,
+      max: open.horizonEnd,
+    });
+    const keyboard = new InlineKeyboard();
+    for (const row of rows) {
+      for (const button of row) keyboard.text(button.text, button.data);
+      keyboard.row();
+    }
+
+    await ctx.api.editMessageText(
+      ctx.chat!.id,
+      messageId,
+      calendarCaption(open.state),
+      { reply_markup: keyboard },
+    );
+  }
+
+  bot.command("calendar", async (ctx) => {
+    if (!ctx.from) return;
+    const trip = isGroup(ctx)
+      ? await findActivePlanningTripByChatId(deps.db, String(ctx.chat.id))
+      : undefined;
+    if (!trip) {
+      await ctx.reply("No trip being planned here yet — /newtrip to start one.");
+      return;
+    }
+    if (!trip.horizonStart || !trip.horizonEnd) {
+      await ctx.reply("This trip has no date range yet, so there's nothing to mark.");
+      return;
+    }
+
+    const participant = await ensureParticipantForTelegramUser(deps.db, trip.id, {
+      telegramUserId: String(ctx.from.id),
+      displayName: [ctx.from.first_name, ctx.from.last_name]
+        .filter(Boolean)
+        .join(" "),
+    });
+
+    const state: CalendarState = {
+      mode: "UNAVAILABLE",
+      monthAnchor: monthStart(trip.horizonStart),
+    };
+    const message = await ctx.reply(calendarCaption(state));
+    const open: OpenCalendar = {
+      ownerId: ctx.from.id,
+      tripId: trip.id,
+      participantId: participant.id,
+      horizonStart: trip.horizonStart,
+      horizonEnd: trip.horizonEnd,
+      state,
+    };
+    calendars.set(calendarKey(ctx.chat.id, message.message_id), open);
+    await drawCalendar(ctx, open, message.message_id);
+  });
+
+  bot.callbackQuery(/^cal:/, async (ctx) => {
+    const data = ctx.callbackQuery.data ?? "";
+    if (data === "cal:x") {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+
+    const messageId = ctx.callbackQuery.message?.message_id;
+    if (!messageId || !ctx.chat) return;
+    const open = calendars.get(calendarKey(ctx.chat.id, messageId));
+    if (!open) {
+      await ctx.answerCallbackQuery("This calendar has expired — /calendar to reopen.");
+      return;
+    }
+    if (ctx.from.id !== open.ownerId) {
+      await ctx.answerCallbackQuery({
+        text: "This calendar belongs to someone else — /calendar opens your own.",
+        show_alert: true,
+      });
+      return;
+    }
+
+    if (data.startsWith("cal:m:")) {
+      const mode = MODE_BY_CODE.get(data.slice(6));
+      if (mode) {
+        open.state.mode = mode;
+        open.state.pendingStart = undefined;
+      }
+      await ctx.answerCallbackQuery();
+      await drawCalendar(ctx, open, messageId);
+      return;
+    }
+
+    if (data.startsWith("cal:n:")) {
+      open.state.monthAnchor = `${data.slice(6)}-01`;
+      await ctx.answerCallbackQuery();
+      await drawCalendar(ctx, open, messageId);
+      return;
+    }
+
+    if (data === "cal:c") {
+      open.state.pendingStart = undefined;
+      await ctx.answerCallbackQuery("Range cancelled.");
+      await drawCalendar(ctx, open, messageId);
+      return;
+    }
+
+    if (data === "cal:done") {
+      calendars.delete(calendarKey(ctx.chat.id, messageId));
+      await ctx.answerCallbackQuery("Saved.");
+      await ctx.api.editMessageText(
+        ctx.chat.id,
+        messageId,
+        "Thanks — got your dates. /calendar anytime to add more.",
+      );
+      const trip = await getTripById(deps.db, open.tripId);
+      if (trip) await refreshTripCard(ctx, trip);
+      return;
+    }
+
+    if (data.startsWith("cal:d:")) {
+      const date = data.slice(6) as ISODate;
+
+      if (!open.state.pendingStart) {
+        open.state.pendingStart = date;
+        await ctx.answerCallbackQuery("Now tap the last day.");
+        await drawCalendar(ctx, open, messageId);
+        return;
+      }
+
+      const { start, end } = orderRange(open.state.pendingStart, date);
+      open.state.pendingStart = undefined;
+      await addCalendarDeclaration(deps.db, open.participantId, {
+        state: open.state.mode,
+        startDate: start,
+        endDate: end,
+      });
+      await ctx.answerCallbackQuery(
+        start === end ? `Saved ${start}` : `Saved ${start} → ${end}`,
+      );
+      await drawCalendar(ctx, open, messageId);
+
+      const trip = await getTripById(deps.db, open.tripId);
+      if (trip) await refreshTripCard(ctx, trip);
+    }
   });
 
   bot.catch((err) => {

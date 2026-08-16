@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../client.js";
 import type { Participant } from "../schema/index.js";
 import { availabilityDeclarations, participants } from "../schema/index.js";
@@ -53,6 +53,44 @@ export async function addNlDeclarations(
       originalText,
     })),
   );
+}
+
+/**
+ * Persist a range entered through the inline calendar. Same table and shape as
+ * natural-language declarations — only `source` differs (brief §12: both input
+ * paths produce identical records).
+ */
+export async function addCalendarDeclaration(
+  db: Db,
+  participantId: string,
+  declaration: NlDeclarationInput,
+): Promise<void> {
+  await db.insert(availabilityDeclarations).values({
+    participantId,
+    state: declaration.state,
+    startDate: declaration.startDate,
+    endDate: declaration.endDate,
+    source: "CALENDAR",
+    originalText: null,
+  });
+}
+
+export async function listDeclarations(
+  db: Db,
+  participantId: string,
+): Promise<
+  { state: "AVAILABLE" | "MAYBE" | "UNAVAILABLE" | "UNKNOWN"; start: string; end: string }[]
+> {
+  const rows = await db
+    .select({
+      state: availabilityDeclarations.state,
+      start: availabilityDeclarations.startDate,
+      end: availabilityDeclarations.endDate,
+    })
+    .from(availabilityDeclarations)
+    .where(eq(availabilityDeclarations.participantId, participantId))
+    .orderBy(asc(availabilityDeclarations.createdAt));
+  return rows;
 }
 
 export async function setLeaveCap(
