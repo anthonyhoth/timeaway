@@ -70,6 +70,17 @@ No surveyed competitor (Howbout, WhenAvailable) appears to model this. Howbout's
 
 ---
 
+## Decision (2026-08-16): initial database schema shape for User / Trip / Participant
+
+Small implementation assumptions made while building the first schema (brief section 28, task 2), recorded here so they aren't silently reversed or rediscovered:
+
+- **Travel Circles are not in the initial schema.** Trips reference an organiser and participants directly; no `circles` table yet. The brief's object model includes optional circles, but trips can exist without one, and "complex travel circles" is an MVP exclusion. A nullable `circle_id` on trips can be added when circles land — nothing in the current shape blocks it.
+- **Participants can exist before the person has an account.** `participants.user_id` is nullable with an `invite_name` fallback (a check constraint requires at least one). This supports the link-passthrough distribution model — the organiser names friends up front ("Marcus"), and each friend claims their slot when they first respond via the shared link. Display strings like "? Marcus awaiting roster" work pre-claim.
+- **`HAPPENED` is not in the `trip_status` enum.** The brief marks it optional-later and confirmation-only. Adding a Postgres enum value later is a one-line migration; leaving it out now keeps the state machine honest about what's actually implemented.
+- **Trip horizon and selected window are stored as Postgres `date` columns** (calendar dates, no timezone), matching the product's day-granularity semantics. `selected_start`/`selected_end` live on the trip row; when candidate windows get their own table (task 4), the selected window may become a reference instead — that refactor is expected, not a reversal.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
