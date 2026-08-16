@@ -133,6 +133,21 @@ Telegram bots in privacy mode (the default) do not receive group messages except
 
 **Mechanism:** every wizard prompt uses ForceReply (with `selective` targeting in groups), so the user's answer is a reply to the bot's message — which privacy mode delivers. The destination Skip became `/skip` (or a typed "skip"), since an inline button can't share a message with ForceReply. The text handler additionally ignores any group message that isn't a direct reply to the bot, so even a privacy-off/admin misconfiguration never silently consumes ambient conversation.
 
+> **REVERSED (2026-08-16, same day, founder-decided): ambient group capture is now the core product motion, not a later opt-in.**
+>
+> The founder's reasoning: the DM/deep-link path creates a say-it-twice problem — a friend answers "how many leave days do you have?" in the group conversation, then has to be persuaded to open a bot DM and repeat it. That participant friction contradicts the brief's own participant-effort-minimisation goal (§6, §7) and §30's proof scenario, which always depicted friends typing constraints into the chat. The bot should triage the group's conversation in real time and converge on windows *as the discussion happens*.
+>
+> **New design (founder-confirmed on all three sub-decisions):**
+> - Privacy mode goes **OFF** via BotFather; the bot must be removed/re-added to existing groups. Telegram's permanent "has access to messages" member-list label plus an explicit join message ("I'll watch this chat for availability talk — /pause anytime") is the consent story. Adding the bot to a group *is* the group's opt-in.
+> - **Three-stage triage:** deterministic vocabulary prefilter (free, discards most chatter) → cheap LLM relevance classifier → LLM extraction into the existing structured declaration/constraint shapes with verbatim source text. The engine remains fully deterministic; the LLM still only parses (§26 unchanged).
+> - **Ack = emoji reaction + live card:** the bot reacts (✍️) to messages it parsed and silently edits one trip-status card in place (`editMessageText`); it never replies per-parse. Clarifying questions only when ambiguity changes feasibility, batched.
+> - **Auto-add participants:** anyone in the group whose availability gets parsed becomes a participant automatically; the organiser can remove them.
+> - **Reads ≠ stores:** non-matching messages are discarded at the webhook edge, never logged or persisted. Only extracted constraints plus the verbatim sentence that produced them are stored. This is the line that keeps §15 defensible.
+> - **DM calendar and web link stay as quiet fallbacks** (rosters, precise ranges, private answers, non-Telegram friends) — never the primary ask. The bot doesn't push people there.
+> - **The bot cannot read messages sent before it joined** (Bot API limitation, no history access). Product motion: add Timeaway first, then start the discussion.
+>
+> Build-order consequence: NL parsing (task 8) is promoted from supplement to core pipeline and now blocks on an Anthropic API key; the ranked-results card (task 10) becomes the live-edited card this pipeline feeds; the group reply-only guard from the ForceReply work is replaced by the triage pipeline.
+
 ---
 
 ## Decision (2026-08-16, founder-decided): the organiser confirms the selected dates
