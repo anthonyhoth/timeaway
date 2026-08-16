@@ -1,0 +1,22 @@
+[
+  { "id": "bangkok", "name": "Bangkok", "country": "Thailand", "latitude": 13.7563, "longitude": 100.5018, "flightHoursFromSin": 2.3, "visaFreeSg": true },
+  { "id": "chiang-mai", "name": "Chiang Mai", "country": "Thailand", "latitude": 18.7883, "longitude": 98.9853, "flightHoursFromSin": 3.0, "visaFreeSg": true },
+  { "id": "phuket", "name": "Phuket", "country": "Thailand", "latitude": 7.8804, "longitude": 98.3923, "flightHoursFromSin": 1.8, "visaFreeSg": true },
+  { "id": "bali", "name": "Bali", "country": "Indonesia", "latitude": -8.65, "longitude": 115.2167, "flightHoursFromSin": 2.7, "visaFreeSg": true },
+  { "id": "jakarta", "name": "Jakarta", "country": "Indonesia", "latitude": -6.2088, "longitude": 106.8456, "flightHoursFromSin": 1.8, "visaFreeSg": true },
+  { "id": "kuala-lumpur", "name": "Kuala Lumpur", "country": "Malaysia", "latitude": 3.139, "longitude": 101.6869, "flightHoursFromSin": 1.0, "visaFreeSg": true },
+  { "id": "penang", "name": "Penang", "country": "Malaysia", "latitude": 5.4141, "longitude": 100.3288, "flightHoursFromSin": 1.5, "visaFreeSg": true },
+  { "id": "ho-chi-minh-city", "name": "Ho Chi Minh City", "country": "Vietnam", "latitude": 10.8231, "longitude": 106.6297, "flightHoursFromSin": 2.0, "visaFreeSg": true },
+  { "id": "hanoi", "name": "Hanoi", "country": "Vietnam", "latitude": 21.0285, "longitude": 105.8542, "flightHoursFromSin": 3.3, "visaFreeSg": true },
+  { "id": "da-nang", "name": "Da Nang", "country": "Vietnam", "latitude": 16.0544, "longitude": 108.2022, "flightHoursFromSin": 3.0, "visaFreeSg": true },
+  { "id": "manila", "name": "Manila", "country": "Philippines", "latitude": 14.5995, "longitude": 120.9842, "flightHoursFromSin": 3.6, "visaFreeSg": true },
+  { "id": "cebu", "name": "Cebu", "country": "Philippines", "latitude": 10.3157, "longitude": 123.8854, "flightHoursFromSin": 3.8, "visaFreeSg": true },
+  { "id": "siem-reap", "name": "Siem Reap", "country": "Cambodia", "latitude": 13.3671, "longitude": 103.8448, "flightHoursFromSin": 2.2, "visaFreeSg": true },
+  { "id": "tokyo", "name": "Tokyo", "country": "Japan", "latitude": 35.6762, "longitude": 139.6503, "flightHoursFromSin": 7.0, "visaFreeSg": true },
+  { "id": "osaka", "name": "Osaka", "country": "Japan", "latitude": 34.6937, "longitude": 135.5023, "flightHoursFromSin": 6.5, "visaFreeSg": true },
+  { "id": "sapporo", "name": "Sapporo", "country": "Japan", "latitude": 43.0621, "longitude": 141.3544, "flightHoursFromSin": 8.0, "visaFreeSg": true },
+  { "id": "seoul", "name": "Seoul", "country": "South Korea", "latitude": 37.5665, "longitude": 126.978, "flightHoursFromSin": 6.5, "visaFreeSg": true },
+  { "id": "busan", "name": "Busan", "country": "South Korea", "latitude": 35.1796, "longitude": 129.0756, "flightHoursFromSin": 6.2, "visaFreeSg": true },
+  { "id": "taipei", "name": "Taipei", "country": "Taiwan", "latitude": 25.033, "longitude": 121.5654, "flightHoursFromSin": 4.7, "visaFreeSg": true },
+  { "id": "hong-kong", "name": "Hong Kong", "country": "Hong Kong", "latitude": 22.3193, "longitude": 114.1694, "flightHoursFromSin": 4.0, "visaFreeSg": true }
+]

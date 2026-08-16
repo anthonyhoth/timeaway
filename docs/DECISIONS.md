@@ -190,6 +190,31 @@ Founder-decided semantics:
 
 ---
 
+## Decision (2026-08-16, founder-decided): destination knowledge base — scope change against brief §29, and why it is not a vector store
+
+**Scope change, explicitly overriding the brief.** Brief §29 lists weather among MVP exclusions and §14 defers weather and approximate pricing to V1.5. The founder has moved a destination knowledge base into MVP as a **non-blocking suggestion layer**. Rationale: a group that knows *when* it is free often does not know *where* to go, and answering that at the moment the window is found is high-value. The distinction from what §29 rules out is that this is a **static, curated dataset with no runtime API dependency** — not the live flight/weather integration the brief was guarding against. Date resolution never depends on it; if the knowledge base is absent or stale, the core loop is unaffected.
+
+This does extend the product's job slightly, from "when can we go" toward "where should we go". Recorded here so the positioning shift is deliberate rather than accidental.
+
+**Storage: a relational table, not vector embeddings.** The founder asked whether embeddings were the right fit. They are not, for four reasons:
+1. Semantic search requires embedding the *query* at lookup time — a model inference call, which defeats the stated goal of LLM-free retrieval.
+2. The query is structured, not semantic: the engine already computed exact months deterministically, so this is a `WHERE month IN (…)` filter.
+3. Approximate nearest-neighbour returns fuzzy top-k; the product needs complete, deterministic, explainable ranking — the same standard set for window ranking.
+4. Scale: ~20 destinations × 12 months ≈ 240 rows (~100KB). The entire knowledge base fits in an LLM context window, so even a model-assisted path needs no retrieval infrastructure. Vector search becomes justified at 10⁵+ unstructured documents — revisit only if travel prose is ingested at that scale.
+
+**The LLM moves to build time, not query time** — mirroring "LLM parses, engine decides": models and scrapers *build* the dataset offline; the engine *queries* it deterministically at runtime.
+
+**Shape:** checked-in JSON loaded in memory and queried by pure functions, matching the existing SG-public-holidays pattern. Every fact is diffable in review, the engine stays testable without a database, and there is no migration. Promote to Postgres only if it grows or needs runtime editing. Monthly granularity for smooth data (climate, price tier, crowds) plus a separate events table with explicit date ranges for sharp windows (cherry blossom, ski season, Golden Week) that monthly buckets cannot express.
+
+**Sourcing, founder-confirmed:**
+- **Weather is real data, not estimates.** Open-Meteo historical reanalysis, fetched once offline and baked in. Their free *endpoint* is non-commercial, but the *data* is CC BY 4.0 and redistributable commercially with attribution — so a build-time fetch with attribution in the dataset is the clean path, and there is no runtime dependency.
+- **Price seasonality is derived from demand drivers, not scraped fares.** No free authoritative dataset exists; commercial ones are paid and scraping aggregators generally breaches terms. More importantly, published seasonality advice is US/Europe-centric and *wrong for Singapore* — from SIN the expensive periods are SG school holidays (June, mid-Nov–Dec), Chinese New Year, and destination-side peaks like Golden Week. So price pressure is computed deterministically from those calendars, with a coarse curated LOW/SHOULDER/HIGH/PEAK tier layered on top as adjustment. Output stays explainable ("pricier: SG school holidays overlap Golden Week") and honest per §14's estimated-vs-live rule — copy says "typically", never asserts live fares.
+- **Coverage: ~20 short-haul destinations from Singapore** (SE Asia + NE Asia), matching where the 23–29 beachhead actually travels and small enough that every row can be hand-verified.
+
+**Integration:** a second deterministic pass after window ranking. For each top window, destinations are scored by day-weighted overlap of the months the window spans (28 Jun–3 Jul is ~45% June, 55% July), producing lines like "7–10 Nov · consider Chiang Mai (dry, low season)".
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
