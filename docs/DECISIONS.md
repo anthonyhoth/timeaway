@@ -363,6 +363,22 @@ Practical consequences:
 
 ---
 
+## Decision (2026-08-17): one horizon parser, after live testing found the wizard rejecting valid input
+
+**Bug found in the founder's first real Telegram session.** The wizard rejected "next year" and "next year around june-july" with "Sorry, I didn't catch that", while `/newtrip next year` had always worked. Cause: **two parsers existed.** `/newtrip` arguments went through the grammar package (fuzzy periods, relative dates, month ranges), but the wizard's horizon step still called an older `parseHorizon` in the bot app that only understood month names and ISO dates. The grammar work never replaced it.
+
+Fixed by making `resolveHorizon` in the grammar package the single entry point for "roughly when could this trip happen?", used by both paths, and deleting the bot-local parser so the two cannot drift apart again.
+
+Two parsing improvements came out of the same session:
+- **A year phrase can now combine with a month range.** "Next year around June–July" means June to July of 2027, not all of 2027 — the year is extracted first and passed to the month matcher as a hint, so the more specific signal wins while still taking the year from elsewhere in the sentence.
+- **A bare space separates months.** "June July 2028" previously read as June alone, because a dash or "to" was required. People write it that way; requiring punctuation made the bot look obtuse for no benefit.
+
+The horizon prompt now advertises what it actually accepts ("Sep–Nov · next year · June–July 2027 · year end · Q1") rather than only the two narrowest forms.
+
+**The general lesson, consistent with the earlier over-claim bug:** unit tests passed throughout, because both parsers were individually correct — the defect was that the *wrong one was wired up*. Integration through the real client is what surfaces this class of bug, and more of it is likely as the rest of the Telegram surface gets exercised for the first time.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

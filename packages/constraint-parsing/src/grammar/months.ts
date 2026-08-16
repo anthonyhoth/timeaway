@@ -19,7 +19,9 @@ const MONTHS = [
 const MONTH_RE =
   "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
 
-const SEP = "(?:\\s*(?:to|until|till|through|[–—-])\\s*)";
+// A bare space also separates months ("June July 2028") — people write it,
+// and requiring a dash or "to" made the bot look stupid for no benefit.
+const SEP = "(?:\\s*(?:to|until|till|through|[–—-])\\s*|\\s+)";
 
 function monthNumber(token: string): number | null {
   const t = token.toLowerCase();
@@ -42,7 +44,13 @@ function iso(year: number, month: number, day: number): ISODate {
  * Bare months roll forward: a month already past resolves to next year, and a
  * range whose end month precedes its start wraps the year ("Nov–Feb").
  */
-export function findMonthRange(text: string, today: ISODate): FoundPeriod | null {
+export function findMonthRange(
+  text: string,
+  today: ISODate,
+  /** Year to assume when the text names months but no year — e.g. "next year
+   *  around June–July" supplies 2027 from elsewhere in the sentence. */
+  yearHint?: number,
+): FoundPeriod | null {
   const currentYear = Number(today.slice(0, 4));
   const currentMonth = Number(today.slice(5, 7));
 
@@ -86,6 +94,7 @@ export function findMonthRange(text: string, today: ISODate): FoundPeriod | null
       endMonth >= startMonth
         ? Number(explicitEndYear)
         : Number(explicitEndYear) - 1;
+  else if (yearHint !== undefined) startYear = yearHint;
   else startYear = startMonth >= currentMonth ? currentYear : currentYear + 1;
 
   const endYear = explicitEndYear

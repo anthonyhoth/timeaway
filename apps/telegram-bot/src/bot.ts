@@ -2,7 +2,9 @@ import type { ConstraintExtractor } from "@timeaway/constraint-parsing";
 import {
   mightContainConstraint,
   parseAvailabilityMessage,
+  parseDurationRange,
   parseTripRequest,
+  resolveHorizon,
 } from "@timeaway/constraint-parsing";
 import type { Db, Trip } from "@timeaway/database";
 import {
@@ -41,7 +43,6 @@ import { formatDateRange, formatDestinations, formatDuration } from "@timeaway/s
 import type { Context } from "grammy";
 import { Bot, InlineKeyboard } from "grammy";
 
-import { parseDurationRange, parseHorizon } from "./parse.js";
 
 export interface BotDeps {
   db: Db;
@@ -78,7 +79,7 @@ const DESTINATION_PROMPT =
 
 const HORIZON_PROMPT =
   "Roughly when could this trip happen?\n" +
-  "e.g. Sep–Nov, December, or 2026-09-01 to 2026-11-30";
+  "e.g. Sep–Nov · next year · June–July 2027 · year end · Q1";
 
 const DURATION_PROMPT = "How many days? A range works best, e.g. 4–6";
 
@@ -361,7 +362,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
 
     if (state.step === "horizon") {
-      const horizon = parseHorizon(ctx.message.text, today());
+      const horizon = resolveHorizon(ctx.message.text, today());
       if (!horizon) {
         await ctx.reply(
           `Sorry, I didn't catch that. ${HORIZON_PROMPT}`,
