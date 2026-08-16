@@ -78,18 +78,27 @@ interface WizardState {
 }
 
 const DESTINATION_PROMPT =
-  "Where are you thinking of going? Reply with a destination, or /skip if it's open.";
+  "Where are you thinking of going?\n" +
+  "A place, or a few like Korea or Japan — or just say you're not sure.";
 
 const HORIZON_PROMPT =
   "Roughly when could this trip happen?\n" +
-  "e.g. Sep–Nov · next year · June–July 2027 · year end · Q1";
+  "Something like Sep–Nov, next year, or year end — or just say you're not sure.";
 
 const DURATION_PROMPT =
-  "How many days? A range works best — e.g. 4–6, a long weekend, or a week.\n" +
-  "Not sure yet? Just say so.";
+  "How many days?\n" +
+  "A range works best — 4–6, a long weekend, a week — or just say you're not sure.";
 
 /** Long weekend through a full week — used when the organiser can't say yet. */
 const DEFAULT_DURATION = { min: 3, max: 7 };
+
+/** Brief §13's "initial active planning slice" — used when the horizon is
+ *  unknown, since windows cannot be generated without one. */
+function defaultHorizon(today: ISODate): { start: ISODate; end: ISODate } {
+  const [y, m, d] = today.split("-").map(Number);
+  const end = new Date(Date.UTC(y!, m! - 1 + 3, d!));
+  return { start: today, end: end.toISOString().slice(0, 10) as ISODate };
+}
 
 const JOIN_MESSAGE =
   "Hey! I'm Timeaway — I help this group find trip dates that actually work.\n\n" +
@@ -189,13 +198,13 @@ export function createBot(token: string, deps: BotDeps): Bot {
     await promptNextStep(ctx, state, ctx.msg.message_id);
   });
 
+  // Undocumented alias for "not sure" — kept working for anyone who tries it,
+  // but the prompts teach plain language instead of commands.
   bot.command("skip", async (ctx) => {
     if (!ctx.from) return;
     const state = wizards.get(keyOf(ctx.chat.id, ctx.from.id));
-    if (state?.step !== "destination") return;
-    state.destinations = [];
-    state.askedDestination = true;
-    await promptNextStep(ctx, state, ctx.msg.message_id);
+    if (!state) return;
+    await applyUnknownAnswer(ctx, state, ctx.msg.message_id);
   });
 
   bot.command("cancel", async (ctx) => {
@@ -295,9 +304,9 @@ export function createBot(token: string, deps: BotDeps): Bot {
     const preamble = echo ? ["Got it:", ...summaryLines(state), ""] : [];
 
     const prompts: Record<Exclude<WizardStep, "confirm">, [string, string]> = {
-      destination: [DESTINATION_PROMPT, "Destination — or /skip"],
-      horizon: [HORIZON_PROMPT, "e.g. Sep–Nov"],
-      duration: [DURATION_PROMPT, "e.g. 4–6"],
+      destination: [DESTINATION_PROMPT, "Japan — or not sure"],
+      horizon: [HORIZON_PROMPT, "Sep–Nov — or not sure"],
+      duration: [DURATION_PROMPT, "4–6 — or not sure"],
     };
     const [prompt, placeholder] = prompts[state.step];
     await ctx.reply(
@@ -401,16 +410,63 @@ export function createBot(token: string, deps: BotDeps): Bot {
     await promptNextStep(ctx, fresh, ctx.callbackQuery.message!.message_id);
   });
 
+  /**
+   * "I don't know" at whichever step we're on. Destination has a real
+   * unknown state (open); the other two are structurally required, so an
+   * assumption is made and stated rather than leaving a dead end.
+   */
+  async function applyUnknownAnswer(
+    ctx: Context,
+    state: WizardState,
+    messageId: number,
+  ): Promise<void> {
+    if (state.step === "destination") {
+      state.destinations = [];
+      state.askedDestination = true;
+      await promptNextStep(ctx, state, messageId);
+      return;
+    }
+
+    if (state.step === "horizon") {
+      const horizon = defaultHorizon(today());
+      state.horizonStart = horizon.start;
+      state.horizonEnd = horizon.end;
+      await ctx.reply(
+        `No problem — I'll look at the next 3 months for now (${formatDateRange(
+          horizon.start,
+          horizon.end,
+        )}).`,
+        { reply_parameters: { message_id: messageId } },
+      );
+      await promptNextStep(ctx, state, messageId);
+      return;
+    }
+
+    state.durationMin = DEFAULT_DURATION.min;
+    state.durationMax = DEFAULT_DURATION.max;
+    await ctx.reply(
+      `No problem — I'll assume ${DEFAULT_DURATION.min}–${DEFAULT_DURATION.max} days ` +
+        "for now, anything from a long weekend to a week.",
+      { reply_parameters: { message_id: messageId } },
+    );
+    await finaliseTrip(ctx, state, messageId);
+  }
+
   async function handleWizardStep(
     ctx: Context & { message: { text: string } },
     state: WizardState,
   ): Promise<void> {
     const messageId = ctx.msg!.message_id;
 
+    if (isUnknownAnswer(ctx.message.text)) {
+      await applyUnknownAnswer(ctx, state, messageId);
+      return;
+    }
+
     if (state.step === "destination") {
       const text = ctx.message.text.trim();
       state.destinations =
-        text.toLowerCase() === "skip" || isUnknownAnswer(text)
+        text.toLowerCase() === "skip"
           ? []
           : parseTripRequest(text, today()).destinations;
       state.askedDestination = true;
@@ -423,7 +479,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       if (!horizon) {
         await ctx.reply(
           `Sorry, I didn't catch that. ${HORIZON_PROMPT}`,
-          forceReply(messageId, "e.g. Sep–Nov"),
+          forceReply(messageId, "Sep–Nov — or not sure"),
         );
         return;
       }
@@ -434,22 +490,11 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
 
     if (state.step === "duration") {
-      if (isUnknownAnswer(ctx.message.text)) {
-        state.durationMin = DEFAULT_DURATION.min;
-        state.durationMax = DEFAULT_DURATION.max;
-        await ctx.reply(
-          `No problem — I'll assume ${DEFAULT_DURATION.min}–${DEFAULT_DURATION.max} days ` +
-            "for now, anything from a long weekend to a week.",
-          { reply_parameters: { message_id: messageId } },
-        );
-        await finaliseTrip(ctx, state, messageId);
-        return;
-      }
       const duration = parseDurationRange(ctx.message.text);
       if (!duration) {
         await ctx.reply(
           `Sorry, I didn't catch that. ${DURATION_PROMPT}`,
-          forceReply(messageId, "e.g. 4–6"),
+          forceReply(messageId, "4–6 — or not sure"),
         );
         return;
       }

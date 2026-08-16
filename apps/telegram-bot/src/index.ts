@@ -66,7 +66,6 @@ void bot.api
     { command: "newtrip", description: "Start planning a trip" },
     { command: "dates", description: "Show the best dates so far" },
     { command: "calendar", description: "Mark your dates on a calendar" },
-    { command: "skip", description: "Skip the current wizard question" },
     { command: "cancel", description: "Abandon the current trip setup" },
     { command: "pause", description: "Stop reading this chat" },
     { command: "resume", description: "Resume reading this chat" },

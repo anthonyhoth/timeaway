@@ -419,6 +419,34 @@ So there was no path at all from that state to collecting a single constraint. T
 
 ---
 
+## Decision (2026-08-17, founder-directed): the wizard teaches plain language, never commands
+
+The founder noticed the wizard was giving contradictory instructions. It was: the destination step advertised `/skip`, the horizon step offered no escape at all, and the duration step said to answer in words. Three steps, three conventions — and `/skip` silently did nothing at two of the three, so the single advertised convention was also broken.
+
+**Decision: plain language is the only advertised way to say "I don't know."** Teaching a command contradicts the product's own premise that you just talk normally, and a new user already knows how to type "not sure" without learning anything. `/skip` survives as an undocumented alias so it works for anyone who tries it, now at every step rather than one, and it has been removed from the command menu.
+
+All three prompts now share one shape — question, examples, same escape phrase — so the pattern is learnable from the first answer:
+
+> Where are you thinking of going?
+> A place, or a few like Korea or Japan — or just say you're not sure.
+
+> Roughly when could this trip happen?
+> Something like Sep–Nov, next year, or year end — or just say you're not sure.
+
+> How many days?
+> A range works best — 4–6, a long weekend, a week — or just say you're not sure.
+
+Input placeholders match ("Japan — or not sure", "Sep–Nov — or not sure", "4–6 — or not sure").
+
+**What "not sure" means is decided in one place** (`applyUnknownAnswer`), so the steps cannot drift apart again:
+- **Destination** — genuinely open. No assumption, so nothing is announced; the summary shows "Destination open".
+- **Horizon** — previously had no escape at all. Now defaults to **the next 3 months**, which is brief §13's "initial active planning slice", and says so.
+- **Duration** — 3–7 days, and says so.
+
+The principle: **state assumptions out loud, stay quiet about non-assumptions.** An open destination is a real answer; an assumed horizon or duration is the bot filling a gap, and the user should know it happened.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
