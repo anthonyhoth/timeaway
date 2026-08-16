@@ -292,6 +292,23 @@ Implementation notes:
 
 ---
 
+## Decision (2026-08-16): web surface implementation (task 11)
+
+**`apps/web` is its own app**, not routes bolted inside `apps/telegram-bot` — Telegram is one adapter, not the architecture (AGENTS.md). Both are served by a single process today (the architecture's one-service-on-Railway shape), with the bot app mounting `createWebApp()`; splitting them into separate deployments later requires no code change.
+
+**Rendering uses `hono/jsx`, chosen for escaping rather than ergonomics.** Destination names and participant names are user-supplied and flow onto a public page, so automatic escaping is a security property, not a convenience — template strings would have depended on remembering to call an escape helper on every interpolation. A test asserts a `<script>` destination renders inert.
+
+**The privacy boundary is enforced by the type, not by discipline.** `PublicTripView` carries `firstName` only and has no field capable of holding a full name or a per-day availability grid, so the page *cannot* leak them even if a future edit tries. `firstNameOf` is unit-tested, including the empty and whitespace cases that would otherwise render a blank label.
+
+**Waitlist signup is idempotent** — the unique index is on `lower(email)`, which Drizzle's typed `onConflictDoNothing` target cannot express, so a duplicate-key error (SQLSTATE 23505) is caught and swallowed while any other error still propagates. The form uses POST-then-redirect so a refresh cannot resubmit.
+
+**Brand kit findings, and one thing that needs the founder:**
+- The kit resolves the logo (the folded-T from §23), the full palette, semantic colours that are darker than the brief's generic green/amber/red and clearly tuned for contrast, the Horizon gradient marked backgrounds-only, and UI tokens. Treated as authoritative where its neutrals differ slightly from §21's approximations, being the later and more specific artifact.
+- **Söhne is a commercial Klim typeface and needs a separate webfont licence.** The site ships Inter (free, and already the kit's body face) with Söhne first in the stack, so a licensed webfont takes over automatically if one is added. This is a founder purchase decision, not something to assume.
+- **The logo mark currently rendered in `layout.tsx` is a placeholder** — a geometric approximation drawn from the raster kit. The real vector should be exported from the kit and dropped in; a production logo must not be reverse-engineered from a PNG.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

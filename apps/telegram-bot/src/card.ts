@@ -1,6 +1,11 @@
 import type { ParticipantPlanningState } from "@timeaway/database";
 import type { EvaluatedWindow, RankedWindows } from "@timeaway/trip-engine";
-import { formatDateRange, formatDestinations, formatDuration } from "./format.js";
+import {
+  formatDateRange,
+  formatDestinations,
+  formatDuration,
+} from "@timeaway/shared";
+
 
 export interface CardInput {
   destinations: string[];

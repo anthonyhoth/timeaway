@@ -19,7 +19,8 @@
     "@timeaway/trip-engine": "workspace:*",
     "dotenv": "^17.4.2",
     "grammy": "^1.45.1",
-    "hono": "^4.6.0"
+    "hono": "^4.6.0",
+    "@timeaway/web": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

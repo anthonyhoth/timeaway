@@ -37,13 +37,10 @@ import {
   renderCalendarKeyboard,
 } from "./calendar.js";
 import type { ISODate } from "@timeaway/shared";
+import { formatDateRange, formatDestinations, formatDuration } from "@timeaway/shared";
 import type { Context } from "grammy";
 import { Bot, InlineKeyboard } from "grammy";
-import {
-  formatDateRange,
-  formatDestinations,
-  formatDuration,
-} from "./format.js";
+
 import { parseDurationRange, parseHorizon } from "./parse.js";
 
 export interface BotDeps {

@@ -2,6 +2,7 @@ import "dotenv/config";
 import { serve } from "@hono/node-server";
 import { OpenAiConstraintExtractor } from "@timeaway/constraint-parsing";
 import { createDb } from "@timeaway/database";
+import { createWebApp } from "@timeaway/web";
 import { webhookCallback } from "grammy";
 import { Hono } from "hono";
 import { createBot } from "./bot.js";
@@ -22,8 +23,10 @@ if (!openaiKey) {
   );
 }
 
+const db = createDb(requireEnv("DATABASE_URL"));
+
 const bot = createBot(requireEnv("TELEGRAM_BOT_TOKEN"), {
-  db: createDb(requireEnv("DATABASE_URL")),
+  db,
   publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "https://timeaway.sg",
   extractor: openaiKey ? new OpenAiConstraintExtractor(openaiKey) : undefined,
 });
@@ -34,6 +37,16 @@ const mode = process.env.BOT_MODE ?? "webhook";
 
 const app = new Hono();
 app.get("/health", (c) => c.json({ ok: true }));
+
+// Public web surface — landing page and read-only trip views. Separate app
+// (Telegram is one adapter, not the architecture) sharing one process.
+app.route(
+  "/",
+  createWebApp({
+    db,
+    botUrl: process.env.BOT_DEEP_LINK ?? "https://t.me/TimeawayBot",
+  }),
+);
 
 if (mode === "webhook") {
   app.post(

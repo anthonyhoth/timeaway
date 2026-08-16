@@ -1,4 +1,4 @@
-import type { ISODate } from "@timeaway/shared";
+import type { ISODate } from "./availability.js";
 
 const MONTH_SHORT = [
   "Jan",
