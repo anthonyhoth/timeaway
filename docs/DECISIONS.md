@@ -311,6 +311,25 @@ Implementation notes:
 
 ---
 
+## Decision (2026-08-16, founder-directed): scroll-driven hero, built with gradients rather than 3D geometry
+
+The founder asked for a "strong 3D render" hero — unresolved chat bubbles, scrolling into a gradient "Siri-like" sphere in the manner of amra.com, resolving into a rendered trip. Inspecting the reference settled the technique: **AMRA's sphere is not a rendered mesh.** It is a large soft gradient orb that travels up through the page on scroll, shifting colour, with content passing over it. So the look is reproducible in CSS, with no WebGL, no asset pipeline, and no modelling.
+
+**What was built** is a three-act scroll narrative matching the product's own story:
+1. **Unresolved** — chat bubbles floating in CSS 3D perspective, carrying real phrasing from the Singlish grammar ("cmi october", "roster not out yet leh") rather than lorem ipsum, scattered at different Z depths so parallax reads as genuine dimension.
+2. **The sphere** — the Horizon-gradient orb rises to fill the viewport, layered radial gradients plus a slowly drifting conic highlight for the "Siri" quality, with the differentiator stated in white over it.
+3. **Resolved** — the orb recedes and the settled trip card tilts upright into place.
+
+Scroll progress is computed per act and written to CSS custom properties on a `requestAnimationFrame` loop, so the animation stays in the compositor rather than thrashing layout.
+
+**Honest limits, so expectations stay calibrated:** this is a gradient-and-perspective composition, not a raytraced render. Photoreal 3D — a rendered globe, physical calendar objects, real lighting — needs an actual 3D tool. Spline is the usual choice for founders here since it exports web-embeddable scenes directly; Blender plus pre-rendered stills is the other route. Either would slot into the same three-act structure without changing the scroll logic.
+
+**Progressive enhancement was load-bearing, not optional.** Acts two and three put white text over the orb, so with JavaScript disabled they would have been white-on-white and unreadable. A `.js` class gates the whole choreography: without it those sections paint their own gradient background and the trip card renders upright and opaque. `prefers-reduced-motion` also stops the float and drift animations.
+
+Note for a future session: the founder asked to install skills named `/taste` and `/impeccable`. Neither exists in their skills catalogue, org catalogue, or the Anthropic set — searched as both skills and plugins. Nothing was installed.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

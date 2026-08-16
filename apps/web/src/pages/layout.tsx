@@ -72,8 +72,17 @@ input[type=email]:focus{border-color:${BRAND.layover};box-shadow:0 0 0 3px rgba(
 export function Layout({
   title,
   description,
+  extraCss,
+  script,
   children,
-}: PropsWithChildren<{ title: string; description: string }>) {
+}: PropsWithChildren<{
+  title: string;
+  description: string;
+  /** Page-specific CSS appended after the base sheet. */
+  extraCss?: string;
+  /** Page-specific JS, run after the DOM is parsed. */
+  script?: string;
+}>) {
   return html`<!doctype html>
     <html lang="en">
       <head>
@@ -94,11 +103,12 @@ export function Layout({
           rel="stylesheet"
         />
         <style>
-          ${raw(BASE_CSS)}
+          ${raw(BASE_CSS)}${raw(extraCss ?? "")}
         </style>
       </head>
       <body>
         ${children}
+        ${script ? html`<script>${raw(script)}</script>` : ""}
       </body>
     </html>`;
 }
