@@ -1,8 +1,10 @@
 import type { ConstraintExtractor } from "@timeaway/constraint-parsing";
 import {
+  applyDestinationEdit,
+  isUnknownAnswer,
   mightContainConstraint,
   parseAvailabilityMessage,
-  isUnknownAnswer,
+  parseDestinationEdit,
   parseDurationRange,
   parseTripRequest,
   resolveHorizon,
@@ -21,6 +23,7 @@ import {
   selectTripDates,
   setAmbientPaused,
   setCardMessageId,
+  setDestinationCandidates,
   setLeaveCap,
   setShortlistSize,
   setTripChatId,
@@ -560,6 +563,24 @@ export function createBot(token: string, deps: BotDeps): Bot {
     // Stage 2: deterministic grammar handles the common phrasings for free.
     // The LLM is consulted only for what the grammar declines to claim
     // (founder-decided, docs/DECISIONS.md).
+    // Someone steering the destination in conversation — "let's try Korea
+    // too", "Korea instead". Checked before the LLM, and after availability
+    // so a message about dates that names a country isn't misread.
+    const current = trip.destinationCandidates ?? [];
+    const edit = parseDestinationEdit(text, today(), current);
+    if (edit && !parseAvailabilityMessage(text, extractionCtx)) {
+      const next = applyDestinationEdit(current, edit);
+      await setDestinationCandidates(deps.db, trip.id, next);
+      try {
+        await ctx.react("✍");
+      } catch (error) {
+        console.error("reaction failed", error);
+      }
+      const afterEdit = await getTripById(deps.db, trip.id);
+      if (afterEdit) await refreshTripCard(ctx, afterEdit);
+      return;
+    }
+
     let result = parseAvailabilityMessage(text, extractionCtx);
     if (!result) {
       if (!deps.extractor) return;

@@ -125,6 +125,18 @@ export async function setShortlistSize(
   await db.update(trips).set({ shortlistSize: size }).where(eq(trips.id, tripId));
 }
 
+/** Rewrite the places under consideration, from a conversational edit. */
+export async function setDestinationCandidates(
+  db: Db,
+  tripId: string,
+  candidates: string[],
+): Promise<void> {
+  await db
+    .update(trips)
+    .set({ destinationCandidates: candidates })
+    .where(eq(trips.id, tripId));
+}
+
 export async function setAmbientPaused(
   db: Db,
   tripId: string,

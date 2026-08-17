@@ -28,6 +28,16 @@ const FILLER = new Set([
   "to", "in", "on", "at", "around", "during", "for", "with", "of", "about",
   "sometime", "somewhere", "maybe", "plan", "planning", "thinking",
   "want", "wanna", "guys", "please", "some", "day", "days",
+  // Edit vocabulary — otherwise "let's go in June instead" yields a place
+  // called "Instead", and "not sure" one called "Sure".
+  "also", "too", "well", "add", "another", "consider", "include", "instead",
+  "rather", "than", "change", "switch", "actually", "drop", "remove", "cross",
+  "off", "forget", "scrap", "no", "not", "longer", "out", "is", "are", "it",
+  "what", "how", "about", "list", "sure", "try", "trying", "lets", "let",
+  "can", "cannot", "cant", "do", "does", "doing", "done", "shall", "should",
+  // Time nouns that survive the temporal pass but are never places.
+  "today", "tomorrow", "tonight", "weekend", "week", "month", "year", "date",
+  "dates", "time", "period",
 ]);
 
 const CANDIDATE_RE = /^[\p{L}][\p{L}\s'’.-]{0,39}$/u;
