@@ -656,6 +656,41 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): removing the bot ends the trip in that chat
+
+Founder, for testing: removing and re-adding the bot should start the group
+clean.
+
+Being removed is the clearest instruction a group can give — whatever we were
+doing, stop — so this is right beyond the testing case. Previously the trip
+survived, and the only way to start fresh was to reach into the database.
+
+Handled at **both** ends, deliberately. On removal, because a bot that is never
+re-added should not leave a live trip pointing at a chat it can no longer see.
+On re-add, because Telegram delivers the removal update to a *running* bot, and
+one removed while the process is down never receives it — so re-adding always
+starts clean regardless of what we witnessed.
+
+**Archived, not deleted.** Everyone's answers survive at the trip's own page,
+and the re-add message names it rather than dropping it in silence. This
+matters more than it looks: the founder has already removed and re-added the
+bot once this week to fix privacy mode, and under a destructive version that
+would have silently binned a fortnight of the group's replies. The trip stops
+being *this chat's* trip; it does not stop existing.
+
+In-memory conversation state is cleared with it — half-finished wizards, open
+"which two weeks?" questions, unapplied edits. A stale wizard left behind would
+answer the next person to type after the bot rejoined, which is the same class
+of bug as the trip surviving.
+
+Verified against the live database rather than assumed: creating a trip for a
+chat, archiving it, and confirming the chat reports no active trip and accepts
+a new one. The membership handlers have no test harness, so this path is
+covered by that check plus the existing `/reset` precedent, which archives the
+same way.
+
+---
+
 ## Decision (2026-08-17): resolve dates by specificity, not by parser order
 
 Founder: *"Why does 'next year dec im free too' parse as 1 Jan – 31 Dec 2027?

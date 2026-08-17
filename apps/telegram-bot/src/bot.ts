@@ -209,23 +209,85 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
   const keyOf = (chatId: number, userId: number) => `${chatId}:${userId}`;
 
+  /**
+   * Removing the bot from a group ends the trip it was planning there.
+   *
+   * Being removed is the clearest statement a group can make: whatever we were
+   * doing, stop. Carrying the old trip across a re-add also made testing
+   * miserable — the founder's own use case — because the only way to start
+   * clean was to reach into the database.
+   *
+   * The trip is **archived, not deleted**. Everyone's answers survive at the
+   * trip's own page, so a re-add that was meant to fix privacy mode does not
+   * quietly destroy a fortnight of the group's replies. It just stops being
+   * *this* chat's trip.
+   */
+  async function endPlanningIn(chatId: number): Promise<Trip | undefined> {
+    const trip = await findActivePlanningTripByChatId(deps.db, String(chatId));
+    if (trip) await archiveTrip(deps.db, trip.id);
+    forgetChatState(chatId, trip?.id);
+    return trip;
+  }
+
+  /**
+   * Drop the in-memory conversation state for a chat: half-finished wizards,
+   * open questions, unapplied edits. Left behind, a stale wizard would answer
+   * the next person to type after the bot rejoined.
+   */
+  function forgetChatState(chatId: number, tripId?: string): void {
+    const prefix = `${chatId}:`;
+    for (const key of wizards.keys()) {
+      if (key.startsWith(prefix)) wizards.delete(key);
+    }
+    for (const key of pendingSpans.keys()) {
+      if (key.startsWith(prefix)) pendingSpans.delete(key);
+    }
+    if (!tripId) return;
+    for (const [key, value] of pendingEdits) {
+      if (value.tripId === tripId) pendingEdits.delete(key);
+    }
+    for (const [key, value] of pendingUndos) {
+      if (value.tripId === tripId) pendingUndos.delete(key);
+    }
+  }
+
   bot.on("my_chat_member", async (ctx) => {
     const status = ctx.myChatMember.new_chat_member.status;
     const wasOut = ["left", "kicked"].includes(
       ctx.myChatMember.old_chat_member.status,
     );
+
+    // Removed. Clear the slate now rather than waiting for a re-add, so a bot
+    // that is never re-added does not leave a live trip pointing at a chat it
+    // cannot see.
+    if (isGroup(ctx) && ["left", "kicked"].includes(status)) {
+      const ended = await endPlanningIn(ctx.chat.id);
+      if (ended) {
+        void recordEvent(deps.db, {
+          event: "trip_ended_by_removal",
+          tripId: ended.id,
+          chatId: String(ctx.chat.id),
+        });
+      }
+      return;
+    }
+
     if (isGroup(ctx) && wasOut && status === "member") {
       // A tap is the whole setup: no command to remember, and whoever taps
       // becomes organiser — more meaningful than whoever added the bot
       // (founder-decided, docs/DECISIONS.md).
-      const existing = await findActivePlanningTripByChatId(
-        deps.db,
-        String(ctx.chat.id),
-      );
+      // Safety net for the removal we may not have seen — Telegram delivers
+      // that update to a running bot, and a bot removed while down never gets
+      // it. Re-adding therefore always starts clean.
+      const ended = await endPlanningIn(ctx.chat.id);
+
       void recordEvent(deps.db, {
         event: "bot_added_to_group",
         chatId: String(ctx.chat.id),
-        properties: { canReadMessages: ctx.me.can_read_all_group_messages },
+        properties: {
+          canReadMessages: ctx.me.can_read_all_group_messages,
+          endedPrevious: ended !== undefined,
+        },
       });
 
       // Global privacy mode is visible; per-group state is not, and a group
@@ -241,10 +303,19 @@ export function createBot(token: string, deps: BotDeps): Bot {
         return;
       }
 
-      await ctx.reply(JOIN_MESSAGE, {
-        reply_markup: existing
-          ? undefined
-          : new InlineKeyboard().text("Start planning a trip", "trip:begin"),
+      // Always a fresh start now, so the button is always the right offer.
+      // The old trip is named rather than dropped in silence — its page still
+      // holds everyone's answers.
+      const previous = ended
+        ? `\n\nThe trip we were planning here is closed. It's still readable at ` +
+          `${deps.publicBaseUrl}/t/${ended.shortCode}.`
+        : "";
+
+      await ctx.reply(`${JOIN_MESSAGE}${previous}`, {
+        reply_markup: new InlineKeyboard().text(
+          "Start planning a trip",
+          "trip:begin",
+        ),
       });
     }
   });
