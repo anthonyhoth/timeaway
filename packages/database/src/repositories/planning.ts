@@ -23,6 +23,8 @@ export interface ParticipantPlanningState {
     state: "AVAILABLE" | "MAYBE" | "UNAVAILABLE" | "UNKNOWN";
     start: string;
     end: string;
+    /** Their own words, so the card can say *why* something is unknown. */
+    sourceText?: string | null;
   }[];
 }
 
@@ -55,6 +57,7 @@ export async function loadTripPlanningState(
       state: availabilityDeclarations.state,
       start: availabilityDeclarations.startDate,
       end: availabilityDeclarations.endDate,
+      sourceText: availabilityDeclarations.originalText,
     })
     .from(availabilityDeclarations)
     .innerJoin(
@@ -70,7 +73,7 @@ export async function loadTripPlanningState(
   >();
   for (const d of declarations) {
     const list = byParticipant.get(d.participantId) ?? [];
-    list.push({ state: d.state, start: d.start, end: d.end });
+    list.push({ state: d.state, start: d.start, end: d.end, sourceText: d.sourceText });
     byParticipant.set(d.participantId, list);
   }
 

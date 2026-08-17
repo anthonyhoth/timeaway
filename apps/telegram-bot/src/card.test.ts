@@ -107,7 +107,12 @@ describe("renderTripCard", () => {
           { state: "AVAILABLE", start: "2026-11-02", end: "2026-11-20" },
         ]),
         person("p2", "Farah", [
-          { state: "UNKNOWN", start: "2026-11-02", end: "2026-11-20" },
+          {
+            state: "UNKNOWN",
+            start: "2026-11-02",
+            end: "2026-11-20",
+            sourceText: "roster not out yet for nov",
+          },
         ]),
       ]),
     );
@@ -346,5 +351,39 @@ describe("a window read off what people said", () => {
       horizonDerived: false,
     });
     expect(card).not.toContain("from what you've said");
+  });
+});
+
+/**
+ * "Roster not out" was hard-coded from when a shift roster was the only thing
+ * that produced UNKNOWN. Once a company closure could too it read as nonsense —
+ * and a generic label would have thrown away the distinction the product exists
+ * to make, so the reason is read off what the person actually wrote.
+ */
+describe("why someone's dates are unknown", () => {
+  const withReason = (sourceText: string) =>
+    renderTripCard(
+      build([
+        person("p1", "Anthony", [
+          { state: "AVAILABLE", start: "2026-11-02", end: "2026-11-20" },
+        ]),
+        person("p2", "Farah", [
+          { state: "UNKNOWN", start: "2026-11-02", end: "2026-11-20", sourceText },
+        ]),
+      ]),
+    );
+
+  it("names a company closure as such", () => {
+    expect(withReason("I can only go during my nov company closure")).toContain(
+      "waiting on company closure dates",
+    );
+  });
+
+  it("still says roster for a roster", () => {
+    expect(withReason("roster not out yet for nov")).toContain("roster not out");
+  });
+
+  it("is honest when the words give no reason", () => {
+    expect(withReason("not sure yet")).toContain("dates not confirmed");
   });
 });

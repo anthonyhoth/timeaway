@@ -9,6 +9,8 @@ import {
   parseParticipantNote,
   joinUtterances,
   looksLikeContinuation,
+  namesOpaquePeriod,
+  opaqueReferentLabel,
   parseOptionReference,
   parseParticipationChange,
   parseUnderspecifiedSpan,
@@ -1314,6 +1316,25 @@ export function createBot(token: string, deps: BotDeps): Bot {
     let result = parseAvailabilityMessage(text, extractionCtx);
     let source: "grammar" | "llm" = "grammar";
 
+    // An opaque referent with no anchor at all — "only during my company
+    // closure". The model cannot resolve it either, so the escalation is pure
+    // cost: ask the one person who can.
+    if (!result && namesOpaquePeriod(text)) {
+      const from = ctx.from!;
+      const participant = await ensureParticipantForTelegramUser(deps.db, trip.id, {
+        telegramUserId: String(from.id),
+        displayName: [from.first_name, from.last_name].filter(Boolean).join(" "),
+      });
+      const horizon =
+        trip.horizonStart && trip.horizonEnd
+          ? { start: trip.horizonStart as ISODate, end: trip.horizonEnd as ISODate }
+          : null;
+      if (horizon) {
+        await askOpaquePeriod(ctx, trip, participant.id, text, [], horizon);
+        return finish(noted);
+      }
+    }
+
     // A fragment finishing the speaker's previous message — "but only the
     // first half". Tried before the LLM, because the answer is already in the
     // chat rather than in the model.
@@ -1430,6 +1451,26 @@ export function createBot(token: string, deps: BotDeps): Bot {
         participantId: participant.id,
         declarationIds: ids,
       });
+
+      // A period only the speaker can resolve. The certain half is already
+      // recorded; ask them for the rest rather than escalating to a model that
+      // cannot know it either.
+      if (namesOpaquePeriod(text)) {
+        const unknown = result.declarations
+          .map((d, index) => ({ d, id: ids[index] }))
+          .filter((entry) => entry.d.state === "UNKNOWN" && entry.id);
+        const span = unknown[0]?.d;
+        if (span) {
+          await askOpaquePeriod(
+            ctx,
+            trip,
+            participant.id,
+            text,
+            unknown.map((entry) => entry.id!),
+            { start: span.start as ISODate, end: span.end as ISODate },
+          );
+        }
+      }
     }
     if (result.maxLeaveDays !== null) {
       await setLeaveCap(deps.db, participant.id, result.maxLeaveDays, text);
@@ -1445,6 +1486,113 @@ export function createBot(token: string, deps: BotDeps): Bot {
    * Called after every accepted constraint, so the group watches the picture
    * sharpen without the chat filling with repeated posts.
    */
+  /**
+   * Questions whose answer only one person has.
+   *
+   * "I can only go during my dec company closure" is precise to the speaker and
+   * unresolvable to everyone else, including the LLM — the dates are not in the
+   * message, the chat, or the model's training data. Escalating costs a call
+   * and returns nothing, so this path deliberately never reaches the extractor.
+   *
+   * What we *can* do is keep the half we know (everything outside December is
+   * out) and ask the one person who holds the rest.
+   */
+  interface PendingOpaque {
+    tripId: string;
+    participantId: string;
+    askerId: number;
+    label: string;
+    /** The UNKNOWN span the answer will replace. */
+    unknownIds: string[];
+    anchorStart: ISODate;
+    anchorEnd: ISODate;
+  }
+  const pendingOpaque = new Map<string, PendingOpaque>();
+  let pendingOpaqueSeq = 1;
+
+  /** Asked once per person per referent — a second ask is nagging, not clarity. */
+  const opaqueAsked = new Set<string>();
+
+  /**
+   * Ask the one person who can answer, in the thread rather than by DM.
+   *
+   * Visible to the group on purpose: it shows *why* that person is pending,
+   * which beats them looking like they are ignoring the chat. The answer comes
+   * through the calendar rather than free text — they know the exact dates, and
+   * typing them is where the errors come from.
+   */
+  async function askOpaquePeriod(
+    ctx: Context & { message: { text: string } },
+    trip: Trip,
+    participantId: string,
+    text: string,
+    unknownIds: string[],
+    anchor: { start: ISODate; end: ISODate },
+  ): Promise<void> {
+    const label = opaqueReferentLabel(text);
+    const askedKey = `${ctx.chat!.id}:${ctx.from!.id}:${label}`;
+    if (opaqueAsked.has(askedKey)) return;
+    opaqueAsked.add(askedKey);
+
+    const id = String(pendingOpaqueSeq++);
+    pendingOpaque.set(id, {
+      tripId: trip.id,
+      participantId,
+      askerId: ctx.from!.id,
+      label,
+      unknownIds,
+      anchorStart: anchor.start,
+      anchorEnd: anchor.end,
+    });
+
+    await ctx.reply(
+      `Only you know when your ${label} is — pick the dates and I'll use them.`,
+      {
+        reply_parameters: replyTo(ctx.msg!.message_id),
+        reply_markup: new InlineKeyboard().text("Pick the dates", `opq:${id}`),
+      },
+    );
+    void recordEvent(deps.db, {
+      event: "opaque_period_asked",
+      tripId: trip.id,
+      chatId: String(ctx.chat!.id),
+      properties: { label },
+    });
+  }
+
+  bot.callbackQuery(/^opq:(\d+)$/, async (ctx) => {
+    const pending = pendingOpaque.get((ctx.match as RegExpMatchArray)[1]!);
+    if (!pending) {
+      await ctx.answerCallbackQuery("That question has expired — say it again.");
+      return;
+    }
+    // Only the person who has the answer can give it.
+    if (ctx.from.id !== pending.askerId) {
+      await ctx.answerCallbackQuery({
+        text: "Only they can answer this one.",
+        show_alert: true,
+      });
+      return;
+    }
+
+    const state: CalendarState = {
+      mode: "AVAILABLE",
+      monthAnchor: monthStart(pending.anchorStart),
+    };
+    await ctx.answerCallbackQuery();
+    const message = await ctx.reply(calendarCaption(state));
+    calendars.set(calendarKey(ctx.chat!.id, message.message_id), {
+      ownerId: ctx.from.id,
+      tripId: pending.tripId,
+      participantId: pending.participantId,
+      horizonStart: pending.anchorStart,
+      horizonEnd: pending.anchorEnd,
+      state,
+      resolving: { label: pending.label, unknownIds: pending.unknownIds },
+    });
+    await drawCalendar(ctx, calendars.get(calendarKey(ctx.chat!.id, message.message_id))!, message.message_id);
+  });
+
   /**
    * The last thing each person said, so a follow-up can finish it.
    *
@@ -2266,6 +2414,13 @@ export function createBot(token: string, deps: BotDeps): Bot {
     horizonStart: ISODate;
     horizonEnd: ISODate;
     state: CalendarState;
+    /**
+     * Set when this calendar was opened to answer a specific question —
+     * "when's your company closure?" — rather than to mark dates freely. The
+     * picked range then *replaces* the UNKNOWN span the question was about,
+     * instead of being added alongside it.
+     */
+    resolving?: { label: string; unknownIds: string[] };
   }
   const calendars = new Map<string, OpenCalendar>();
   const calendarKey = (chatId: number, messageId: number) =>
@@ -2413,6 +2568,22 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
       const { start, end } = orderRange(open.state.pendingStart, date);
       open.state.pendingStart = undefined;
+
+      // Answering "when's your company closure?" replaces the UNKNOWN span the
+      // question was about. Adding alongside it would leave the whole month
+      // marked unknown forever, which is the state the answer just resolved.
+      if (open.resolving) {
+        for (const id of open.resolving.unknownIds) {
+          await deleteDeclaration(deps.db, open.participantId, id);
+        }
+        void recordEvent(deps.db, {
+          event: "opaque_period_resolved",
+          tripId: open.tripId,
+          chatId: String(ctx.chat.id),
+          properties: { label: open.resolving.label },
+        });
+      }
+
       await addCalendarDeclaration(deps.db, open.participantId, {
         state: open.state.mode,
         startDate: start,
@@ -2421,6 +2592,22 @@ export function createBot(token: string, deps: BotDeps): Bot {
       await ctx.answerCallbackQuery(
         start === end ? `Saved ${start}` : `Saved ${start} → ${end}`,
       );
+
+      // One answer settles the question — close the calendar rather than
+      // leaving it open for more marking they did not ask to do.
+      if (open.resolving) {
+        const label = open.resolving.label;
+        calendars.delete(calendarKey(ctx.chat.id, messageId));
+        await ctx.api.editMessageText(
+          ctx.chat.id,
+          messageId,
+          `Got it — your ${label} is ${formatDateRange(start, end)}.`,
+        );
+        const settled = await getTripById(deps.db, open.tripId);
+        if (settled) await refreshTripCard(ctx, settled);
+        return;
+      }
+
       await drawCalendar(ctx, open, messageId);
 
       const trip = await getTripById(deps.db, open.tripId);

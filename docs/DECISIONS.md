@@ -656,6 +656,55 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-18): ask the one person who can answer
+
+Built the ask-and-resolve flow for periods only the speaker can resolve. The
+shape of the pipeline changes with it: **classify by what is missing, not by
+whether we understood.**
+
+Three kinds of failure, previously collapsed into one path:
+
+  1. **unfamiliar wording** — the LLM might genuinely help;
+  2. **a value missing from the message but derivable** ("2 weeks in Nov") —
+     compute the options and ask, which is the span-clarification flow;
+  3. **a value only the speaker holds** ("my company closure") — ask *them*, and
+     never call the extractor, because it cannot know either.
+
+Only (1) is an LLM's job. Treating (3) as (1) spent a call to learn nothing,
+and — worse — left the surrounding grammar to guess, which is how a five-day
+closure became a month of availability.
+
+**The certain half is kept and recorded immediately.** "Only during my
+December closure" rules out everything outside December with complete
+confidence; that constraint narrows the search now and must not wait on the
+rest. Only the December sub-range is UNKNOWN.
+
+**The question goes in the thread, as a reply to that person.** Not by DM,
+which the founder rejected early for good reason, and not as a group broadcast.
+Visible on purpose: it shows the group *why* someone is pending, rather than
+leaving them looking like they are ignoring the chat. Only that person can
+answer it — the button refuses anyone else.
+
+**The answer comes through the calendar, not free text.** They know the exact
+dates; typing them is where errors come from. The picked range **replaces** the
+UNKNOWN span rather than joining it, and the calendar closes on the answer
+instead of inviting more marking nobody asked for.
+
+**Asked once per person per referent.** A second ask is nagging, and the
+research was explicit that every question is friction.
+
+**The card names the reason.** "Roster not out" had been hard-coded from when a
+shift roster was the only thing producing UNKNOWN, and read as nonsense for a
+company closure. The reason is now read off what the person actually wrote, so
+a nurse still sees "roster not out" while someone waiting on a shutdown sees
+that — the distinction the product exists to make, kept rather than flattened
+into a generic label.
+
+Nothing blocks on an unanswered question: the shortlist still shows, the person
+stays UNKNOWN, and the nudge names them.
+
+---
+
 ## Decision (2026-08-18): Singlish particles decide whether a sentence is an answer
 
 Founder asked whether the guardrails are enough for colloquial positive and

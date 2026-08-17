@@ -91,12 +91,23 @@ function participantLines(
   }
 
   // UNKNOWN-driven maybes are named separately — collapsing them into a
-  // generic "maybe" would discard the product's core distinction.
-  const pending = window.participants
-    .filter((p) => p.status === "MAYBE" && p.dayCounts.unknown > 0)
-    .map((p) => nameOf(participants, p.participantId));
-  if (pending.length > 0) {
-    lines.push(`${joinNames(pending)} — roster not out`);
+  // generic "maybe" would discard the product's core distinction. The *reason*
+  // is named too: "roster not out" was hard-coded from when a shift roster was
+  // the only thing that produced UNKNOWN, and read as nonsense once a company
+  // closure could.
+  const pending = window.participants.filter(
+    (p) => p.status === "MAYBE" && p.dayCounts.unknown > 0,
+  );
+  const byReason = new Map<string, string[]>();
+  for (const person of pending) {
+    const reason = unknownReason(participants, person.participantId);
+    byReason.set(reason, [
+      ...(byReason.get(reason) ?? []),
+      nameOf(participants, person.participantId),
+    ]);
+  }
+  for (const [reason, names] of byReason) {
+    lines.push(`${joinNames(names)} — ${reason}`);
   }
 
   const maybe = window.participants
@@ -126,6 +137,32 @@ function participantLines(
     );
   }
   return lines;
+}
+
+/**
+ * Why this person's dates are unknown, in their own terms.
+ *
+ * Read off what they actually wrote, so a nurse still sees "roster not out"
+ * while someone waiting on a company shutdown sees that instead. A generic
+ * label would have been easier and would have thrown away the distinction the
+ * product exists to make.
+ */
+function unknownReason(
+  participants: readonly ParticipantPlanningState[],
+  participantId: string,
+): string {
+  const said = participants
+    .find((p) => p.participantId === participantId)
+    ?.declarations.find((d) => d.state === "UNKNOWN")?.sourceText;
+  if (!said) return "dates not confirmed";
+  if (/\broster\b/i.test(said)) return "roster not out";
+  if (/\bshift/i.test(said)) return "shifts not out";
+  const opaque =
+    /\b(company (?:closure|shutdown|leave)|office (?:closure|shutdown)|block leave|forced leave|clearance leave|notice period)\b/i.exec(
+      said,
+    );
+  if (opaque) return `waiting on ${opaque[1]!.toLowerCase()} dates`;
+  return "dates not confirmed";
 }
 
 /**
