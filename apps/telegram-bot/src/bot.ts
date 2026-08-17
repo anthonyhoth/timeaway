@@ -7,6 +7,8 @@ import {
   parseAvailabilityMessage,
   parseDurationRange,
   parseParticipantNote,
+  joinUtterances,
+  looksLikeContinuation,
   parseOptionReference,
   parseParticipationChange,
   parseUnderspecifiedSpan,
@@ -1312,6 +1314,13 @@ export function createBot(token: string, deps: BotDeps): Bot {
     let result = parseAvailabilityMessage(text, extractionCtx);
     let source: "grammar" | "llm" = "grammar";
 
+    // A fragment finishing the speaker's previous message — "but only the
+    // first half". Tried before the LLM, because the answer is already in the
+    // chat rather than in the model.
+    if (!result && (await tryContinuation(ctx, trip, text, extractionCtx))) {
+      return finish(noted);
+    }
+
     // "2 weeks in Nov" names a length and a period but no position. The
     // grammar is right to decline it, and guessing would block a fortnight
     // nobody chose — so ask, rather than lose the constraint to the LLM.
@@ -1403,7 +1412,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     });
 
     if (result.declarations.length > 0) {
-      await addNlDeclarations(
+      const ids = await addNlDeclarations(
         deps.db,
         participant.id,
         result.declarations.map((d) => ({
@@ -1413,6 +1422,14 @@ export function createBot(token: string, deps: BotDeps): Bot {
         })),
         text,
       );
+      // Kept so a follow-up qualifier can replace this reading rather than sit
+      // alongside it, leaving the wider claim standing.
+      lastUtterances.set(spanKey(ctx.chat!.id, from.id), {
+        text,
+        at: Date.now(),
+        participantId: participant.id,
+        declarationIds: ids,
+      });
     }
     if (result.maxLeaveDays !== null) {
       await setLeaveCap(deps.db, participant.id, result.maxLeaveDays, text);
@@ -1428,6 +1445,95 @@ export function createBot(token: string, deps: BotDeps): Bot {
    * Called after every accepted constraint, so the group watches the picture
    * sharpen without the chat filling with repeated posts.
    */
+  /**
+   * The last thing each person said, so a follow-up can finish it.
+   *
+   * People type in installments: "i can do december" then "but only the first
+   * half". The second message has no referent of its own, and the first has
+   * already been recorded *unqualified* — which is the damaging half, because
+   * the group ends up with December when a fortnight was meant.
+   */
+  interface LastUtterance {
+    text: string;
+    at: number;
+    participantId: string;
+    /** Declarations this message created, replaced if it gets qualified. */
+    declarationIds: string[];
+  }
+  const lastUtterances = new Map<string, LastUtterance>();
+
+  /** Long enough for a follow-up thought, short enough to be the same one. */
+  const CONTINUATION_WINDOW_MS = 3 * 60 * 1000;
+
+  /**
+   * Re-read the previous message and this one as the single sentence they were
+   * meant to be.
+   *
+   * Deliberately reuses every parser rather than adding one: the join succeeds
+   * only if the combined text reads as something we already understand, which
+   * is a much stronger check than trying to interpret the fragment alone.
+   */
+  async function tryContinuation(
+    ctx: Context & { message: { text: string } },
+    trip: Trip,
+    text: string,
+    extractionCtx: Parameters<typeof parseAvailabilityMessage>[1],
+  ): Promise<boolean> {
+    const key = spanKey(ctx.chat!.id, ctx.from!.id);
+    const previous = lastUtterances.get(key);
+    if (!previous) return false;
+    if (Date.now() - previous.at > CONTINUATION_WINDOW_MS) {
+      lastUtterances.delete(key);
+      return false;
+    }
+    if (!looksLikeContinuation(text)) return false;
+
+    const joined = joinUtterances(previous.text, text);
+    const combined = parseAvailabilityMessage(joined, extractionCtx);
+    if (!combined || combined.declarations.length === 0) return false;
+
+    // The qualified reading replaces the unqualified one rather than joining
+    // it: "december" and "the first half of december" are the same statement
+    // told twice, and keeping both would leave the wider one standing.
+    for (const id of previous.declarationIds) {
+      await deleteDeclaration(deps.db, previous.participantId, id);
+    }
+
+    const ids = await addNlDeclarations(
+      deps.db,
+      previous.participantId,
+      combined.declarations.map((d) => ({
+        state: d.state,
+        startDate: d.start,
+        endDate: d.end,
+      })),
+      joined,
+    );
+    if (combined.maxLeaveDays !== null) {
+      await setLeaveCap(deps.db, previous.participantId, combined.maxLeaveDays, joined);
+    }
+    lastUtterances.set(key, {
+      text: joined,
+      at: Date.now(),
+      participantId: previous.participantId,
+      declarationIds: ids,
+    });
+
+    void recordEvent(deps.db, {
+      event: "continuation_merged",
+      tripId: trip.id,
+      chatId: String(ctx.chat!.id),
+    });
+    try {
+      await ctx.react("✍");
+    } catch (error) {
+      console.error("reaction failed", error);
+    }
+    const updated = await getTripById(deps.db, trip.id);
+    if (updated) await refreshTripCard(ctx, updated);
+    return true;
+  }
+
   /**
    * A question we asked, waiting on an answer — the context layer.
    *

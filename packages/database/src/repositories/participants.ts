@@ -45,18 +45,23 @@ export async function addNlDeclarations(
   participantId: string,
   declarations: readonly NlDeclarationInput[],
   originalText: string,
-): Promise<void> {
-  if (declarations.length === 0) return;
-  await db.insert(availabilityDeclarations).values(
-    declarations.map((d) => ({
-      participantId,
-      state: d.state,
-      startDate: d.startDate,
-      endDate: d.endDate,
-      source: "NATURAL_LANGUAGE" as const,
-      originalText,
-    })),
-  );
+  /** Ids are returned so a follow-up that refines this message can replace it. */
+): Promise<string[]> {
+  if (declarations.length === 0) return [];
+  const rows = await db
+    .insert(availabilityDeclarations)
+    .values(
+      declarations.map((d) => ({
+        participantId,
+        state: d.state,
+        startDate: d.startDate,
+        endDate: d.endDate,
+        source: "NATURAL_LANGUAGE" as const,
+        originalText,
+      })),
+    )
+    .returning({ id: availabilityDeclarations.id });
+  return rows.map((row) => row.id);
 }
 
 /**

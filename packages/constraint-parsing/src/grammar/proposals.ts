@@ -161,7 +161,7 @@ export function stripProposalLanguage(text: string): string {
       " ",
     )
     .replace(
-      /\b(?:could|would|should|shall|might|must|will|do|does|did|go|going|goes|be|been|is|are|was|were|am|the|a|an)\b/gi,
+      /\b(?:could|would|should|shall|might|must|will|do|does|did|go|going|goes|be|been|is|are|was|were|am|the|a|an|think|thought|guess|reckon|feel|say|said|really|quite|just|still|then|actually|instead)\b/gi,
       " ",
     )
     .replace(/[?!.,]+/g, " ")

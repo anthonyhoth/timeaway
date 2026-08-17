@@ -12,3 +12,4 @@ export * from "./option-reference.js";
 export * from "./underspecified.js";
 export * from "./multi-span.js";
 export * from "./proposals.js";
+export * from "./continuation.js";

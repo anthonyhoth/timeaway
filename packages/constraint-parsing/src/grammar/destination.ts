@@ -83,12 +83,13 @@ export function parseDestinationEdit(
   // unknown places working. A bare assessment ("X is fine too") constrains its
   // subject not at all, so there the name has to be plausible: otherwise "the
   // weather is fine too" books a trip to Weather.
-  // Every proposal is vetted, because most frames govern a *verb phrase* rather
-  // than a noun: "let's" introduces a place in "let's do Batam" and a plan for
-  // the evening in "let's eat later", which was becoming a trip to Eat Later.
-  // Only an explicit replace or remove skips the check, and those must already
-  // name a destination the trip has.
-  const needsVetting = !REPLACE_WORDS.test(text) && !REMOVE_WORDS.test(text);
+  // Everything except REMOVE is vetted. REMOVE is safe unvetted because it can
+  // only name a destination the trip already has; REPLACE is not, and exempting
+  // it was a real hole — "actually only the last 2 weeks" carries the replace
+  // word "actually", and its leftovers became a destination called **Only**
+  // that wiped the group's actual choices. Replace is the destructive op; it
+  // deserves the strictest check, not the loosest.
+  const needsVetting = op !== "REMOVE";
   if (needsVetting) {
     named = named.filter((name) => namesLikelyPlace(name, rawText));
     if (named.length === 0) return null;

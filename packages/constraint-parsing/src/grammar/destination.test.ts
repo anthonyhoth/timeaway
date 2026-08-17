@@ -93,3 +93,26 @@ describe("applyDestinationEdit", () => {
     expect(applyDestinationEdit(["Japan"], { op: "REMOVE", destinations: ["Japan"] })).toEqual([]);
   });
 });
+
+/**
+ * Found while testing two-message continuations: "actually only the last 2
+ * weeks" carries the replace word "actually", and its leftovers became a
+ * destination called **Only** — which, being a REPLACE, wiped the group's
+ * actual choices. Replace is the destructive op and had the loosest check.
+ */
+describe("replace is vetted like everything else", () => {
+  const parse = (text: string, current: string[] = ["Japan"]) =>
+    parseDestinationEdit(text, "2026-08-17", current);
+
+  it("does not invent a destination from a qualifier", () => {
+    expect(parse("actually only the last 2 weeks")).toBeNull();
+    expect(parse("actually nvm")).toBeNull();
+    expect(parse("actually i think not")).toBeNull();
+  });
+
+  it("still replaces when a real place is named", () => {
+    expect(parse("let's go Korea instead")).toMatchObject({ op: "REPLACE" });
+    expect(parse("change it to Taiwan")).toMatchObject({ op: "REPLACE" });
+    expect(parse("actually lets do Bali")).toMatchObject({ op: "REPLACE" });
+  });
+});
