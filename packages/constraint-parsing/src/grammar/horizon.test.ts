@@ -123,3 +123,45 @@ describe("parseDurationRange — phrasings from live testing", () => {
     expect(parseDurationRange("idk yet")).toBeNull();
   });
 });
+
+/**
+ * Reported live: a trip started in a group assumed a 2026 window, and answering
+ * for 2027 left the group with "no dates". Part of that was the wizard flatly
+ * rejecting the clearest answer someone can give to "roughly when?".
+ */
+describe("a bare year is a horizon", () => {
+  const today = "2026-08-17" as const;
+
+  it("accepts a year on its own", () => {
+    expect(resolveHorizon("2027", today)).toEqual({
+      start: "2027-01-01",
+      end: "2027-12-31",
+    });
+    expect(resolveHorizon("in 2027", today)).toEqual({
+      start: "2027-01-01",
+      end: "2027-12-31",
+    });
+  });
+
+  it("starts a year already under way from today, not January", () => {
+    expect(resolveHorizon("2026", today)).toEqual({
+      start: "2026-08-17",
+      end: "2026-12-31",
+    });
+    expect(resolveHorizon("this year", today)?.start).toBe("2026-08-17");
+  });
+
+  it("still lets a month inside the year win", () => {
+    // The year is a hint, not the answer, when something narrower is said.
+    expect(resolveHorizon("dec 2027", today)).toEqual({
+      start: "2027-12-01",
+      end: "2027-12-31",
+    });
+    expect(resolveHorizon("next year june", today)?.start).toBe("2027-06-01");
+  });
+
+  it("still declines a non-answer", () => {
+    expect(resolveHorizon("idk", today)).toBeNull();
+    expect(resolveHorizon("hahaha", today)).toBeNull();
+  });
+});

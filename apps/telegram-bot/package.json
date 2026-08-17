@@ -7,9 +7,10 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "dev": "BOT_MODE=polling tsx watch src/index.ts",
+    "dev": "pnpm --filter \"@timeaway/*\" --filter \"!@timeaway/telegram-bot\" build && BOT_MODE=polling tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "webhook:set": "tsx src/scripts/set-webhook.ts"
+    "webhook:set": "tsx src/scripts/set-webhook.ts",
+    "dev:nobuild": "BOT_MODE=polling tsx watch src/index.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",

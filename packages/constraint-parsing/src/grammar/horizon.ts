@@ -39,6 +39,18 @@ export function resolveHorizon(
   const relative = findRelativePeriod(text, today);
   if (relative) return relative.range;
 
+  // A bare year is a perfectly ordinary answer to "roughly when?", and was
+  // being rejected outright — "2027" got "Sorry, I didn't catch that", which
+  // is the wizard refusing the clearest thing someone can say.
+  if (yearHint !== undefined && /^\s*(?:in\s+|around\s+)?(?:20\d{2}|next year|this year)\s*$/i.test(text)) {
+    const from = `${yearHint}-01-01`;
+    // A year already under way starts today, not in January.
+    return {
+      start: from < today ? today : from,
+      end: `${yearHint}-12-31`,
+    };
+  }
+
   return null;
 }
 

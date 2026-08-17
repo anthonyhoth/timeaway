@@ -656,6 +656,52 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): the dev loop was shipping stale parsers
+
+Founder reported *"i can do dec next year"* still parsing as all of 2027 —
+after the specificity fix that was supposed to handle exactly this.
+
+The parser was already correct. **The running bot was not.** Workspace packages
+resolve through `main: ./dist/index.js`, so the bot loads compiled output,
+while vitest resolves TypeScript source directly. Every test passed against
+code the bot had never loaded: `dist` was stamped 17:13, `src` 17:37, and
+`resolveBySpecificity` did not appear in the built output at all.
+
+This is the most dangerous failure mode in this project so far, because it
+inverts the signal the whole session has relied on. A green suite plus a bot
+restart *looked* like verification and was not, and it silently applied to
+several fixes at once — specificity, multi-span, AL, the NS vocabulary.
+
+`pnpm dev` for the bot now builds its workspace dependencies first, so
+restarting cannot load stale packages. `dev:nobuild` keeps the old fast path
+for when only bot sources changed. The rule this encodes: **anything that
+crosses a package boundary must be verified through the built artefact, not the
+test runner.** The same class caught the archived trip page an hour earlier —
+green tests, stale `dist`.
+
+## Decision (2026-08-17): a year is an answer, and a misplaced window is fixable
+
+Two failures behind *"indicating availability for 2027 says I have no dates"*.
+
+**"2027" was not accepted as a horizon.** `resolveHorizon` handled "next year"
+and "dec 2027" but rejected a bare year, so the wizard answered the clearest
+possible reply to *"roughly when?"* with "Sorry, I didn't catch that". A year
+already under way now starts from today rather than 1 January, and a month
+inside the year still wins — the year is a hint, not the answer, when something
+narrower is said.
+
+**A trip window in the wrong place is not a scheduling failure.** With a
+3-month default horizon, everyone answering for Dec 2027 produced "no window
+works" plus advice to "move the dates" — while the bot already knew precisely
+where they would have to move to. The card now offers the organiser a one-tap
+**Move trip to 1–31 Dec 2027**, spanning everything people actually said.
+
+Nobody's answers are touched by the move; they simply stop being outside the
+window, which is what makes it safe as a single tap. Organiser-gated, like
+every other change to the trip's shape.
+
+---
+
 ## Decision (2026-08-17): an archived trip's page reads as a record, not a board
 
 Founder confirmed archiving over deletion. Following that through exposed a

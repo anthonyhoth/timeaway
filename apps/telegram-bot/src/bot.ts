@@ -1662,8 +1662,25 @@ export function createBot(token: string, deps: BotDeps): Bot {
     });
 
     let keyboard: InlineKeyboard | undefined;
+
+    // Everyone answering for dates the trip does not cover is not a failure to
+    // find a window — it is the window being in the wrong place. Saying "move
+    // the dates" and leaving them to work out how was a dead end; the bot
+    // already knows exactly where they would have to move to.
+    const outside = diagnostics.filter(
+      (d) => d.kind === "ANSWERED_OUTSIDE_HORIZON",
+    );
+    if (!selected && outside.length > 0) {
+      const stated = outside.flatMap((d) => d.statedRanges);
+      const start = stated.reduce((a, r) => (r.start < a ? r.start : a), stated[0]!.start);
+      const end = stated.reduce((a, r) => (r.end > a ? r.end : a), stated[0]!.end);
+      keyboard = new InlineKeyboard()
+        .text(`Move trip to ${formatDateRange(start, end)}`, `movehz:${start}:${end}`)
+        .row();
+    }
+
     if (!selected && shortlist.length > 0) {
-      keyboard = new InlineKeyboard();
+      keyboard = keyboard ?? new InlineKeyboard();
       if (shortlistSize > 3 && shortlist.length > 3) {
         // Round one: the group reacts to the spread before choosing.
         keyboard.text("Narrow to 3", "trip:narrow");
@@ -1940,6 +1957,47 @@ export function createBot(token: string, deps: BotDeps): Bot {
     // scrolled away, so editing it in place would look like nothing happened.
     await refreshTripCard(ctx, trip, { forceNew: true });
   });
+
+  /**
+   * Move the trip's window to cover what people actually said.
+   *
+   * Organiser-gated like every other change to the trip's shape. Nobody's
+   * answers are touched — they simply stop being outside the window, which is
+   * why this is safe to offer as one tap.
+   */
+  bot.callbackQuery(
+    /^movehz:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/,
+    async (ctx) => {
+      const [, start, end] = ctx.match as RegExpMatchArray;
+      const trip = await findActivePlanningTripByChatId(
+        deps.db,
+        String(ctx.chat!.id),
+      );
+      if (!trip) {
+        await ctx.answerCallbackQuery("That trip is no longer active.");
+        return;
+      }
+      if (!(await isTripOrganiser(trip, ctx.from))) {
+        await ctx.answerCallbackQuery({
+          text: "Only the organiser can move the trip.",
+          show_alert: true,
+        });
+        return;
+      }
+      await setTripShape(deps.db, trip.id, {
+        horizonStart: start!,
+        horizonEnd: end!,
+      });
+      void recordEvent(deps.db, {
+        event: "horizon_moved",
+        tripId: trip.id,
+        chatId: String(ctx.chat!.id),
+      });
+      await ctx.answerCallbackQuery("Moved.");
+      const updated = await getTripById(deps.db, trip.id);
+      if (updated) await refreshTripCard(ctx, updated, { forceNew: true });
+    },
+  );
 
   /** Only the organiser confirms dates (founder-decided, docs/DECISIONS.md). */
   bot.callbackQuery(/^sel:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/, async (ctx) => {
