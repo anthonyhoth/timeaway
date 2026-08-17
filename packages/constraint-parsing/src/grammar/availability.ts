@@ -4,6 +4,7 @@ import { findMonthRange } from "./months.js";
 import type { FoundPeriod } from "./periods.js";
 import { findFuzzyPeriod, findRelativePeriod } from "./periods.js";
 import { findChronoPeriod } from "./chrono.js";
+import { namesLengthWithinPeriod } from "./span-shape.js";
 import { findSubPeriod } from "./subperiods.js";
 
 /**
@@ -193,6 +194,26 @@ function findDateReference(
 }
 
 /**
+ * Which way a message leans, with no date attached.
+ *
+ * Exported so the underspecified-span path can reuse exactly this reading:
+ * "not free 2 weeks in Nov" and "free 2 weeks in Nov" ask the same question but
+ * record opposite answers, and a second copy of this logic would drift.
+ */
+export function messageIntent(
+  rawText: string,
+): DeclaredAvailabilityState | null {
+  const text = stripParticles(rawText);
+  if (UNKNOWN.test(text)) return "UNKNOWN";
+  const negative = NEGATIVE.test(text) || BLOCKING_COMMITMENT.test(text);
+  const positive = POSITIVE.test(text);
+  // Negation wins when both appear — "can't make it" contains "can".
+  if (negative) return "UNAVAILABLE";
+  if (positive) return "AVAILABLE";
+  return null;
+}
+
+/**
  * Parse one chat message. Null means "not confident — escalate to the LLM".
  */
 export function parseAvailabilityMessage(
@@ -254,6 +275,11 @@ export function parseAvailabilityMessage(
   // reference is exact and safe; otherwise decline rather than over-claim.
   const narrowed = SUB_PERIOD_NOTES.has(dateRef.note);
   if (!narrowed && SUB_PERIOD_QUALIFIER.test(text)) return null;
+
+  // "a week in Dec" names how long but not when, so the month matcher's answer
+  // is the whole of December — thirty-one days claimed from a statement about
+  // seven. Decline; the caller asks which week instead.
+  if (namesLengthWithinPeriod(text)) return null;
 
   const isUnknown = UNKNOWN.test(text);
 

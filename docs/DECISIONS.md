@@ -656,6 +656,54 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): the context layer — remembering what we asked
+
+Founder corrected my reading: in *"I'm not free 2 weeks in nov"* → *"the middle
+one"*, **the middle one is the middle two weeks of November**, not an item from
+the shortlist. *"That is why it is crucial to handle these messages
+contextually."*
+
+That correction matters, because the option-reference work shipped an hour
+earlier would have resolved those three words against the trip shortlist and
+**selected a trip window instead of recording someone's unavailability** — a
+confident wrong answer, the failure mode this codebase is built to avoid.
+
+**Ask rather than lose.** "2 weeks in Nov" states a length and a period and
+says nothing about position. The grammar is right to decline — but declining
+sent it to an LLM that cannot know the answer either, because the information
+is not in the message. The missing piece is one question with three obvious
+answers, so the bot now asks:
+
+    Which 2 weeks?
+    [1–14 Nov]  [9–22 Nov]  [17–30 Nov]
+
+`positionSpans` places a span of known length at the start, middle and end of a
+period. Three, because it covers the range without making anyone scan a list,
+and because it matches how people say it unprompted. The middle is centred with
+the odd day given to the front, so the options stay in calendar order and never
+collide with their own labels.
+
+**An open question is the nearest referent.** Pending questions are checked
+*before* the shortlist's own "the middle one", and keyed per chat **and per
+person** — two people can be mid-answer at once, and one person's "the middle
+one" must never land on the other's dates. A message that is not an answer
+leaves the question open and carries on to the ordinary parsers, rather than
+being swallowed. Questions expire after 15 minutes.
+
+**A third over-claim, found while testing this.** `"free a week in dec"` was
+being recorded as *all of December* — thirty-one days claimed from a statement
+about seven. The sub-period guard caught `2 weeks` but not the word forms
+("a week", "two weeks") or days at all ("3 days in Jan").
+
+The shape now lives in `span-shape.ts`, imported by both parsers: availability
+uses it to **decline**, the underspecified parser uses it to **ask**. One
+definition, deliberately — importing one from the other would cycle, and two
+copies would drift about which messages are ambiguous. It requires a period
+*after* the length, so `"12 days leave, anytime works"` is untouched; that
+exact regression was fixed once already.
+
+---
+
 ## Decision (2026-08-17): a statement about yourself is never a change to the trip
 
 Founder asked how *"I'm not free 2 weeks in nov"* then *"the middle one"* are

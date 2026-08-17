@@ -9,6 +9,7 @@ import {
   parseParticipantNote,
   parseOptionReference,
   parseParticipationChange,
+  parseUnderspecifiedSpan,
   parseReversal,
   parseTripEdit,
   parseTripRequest,
@@ -52,6 +53,8 @@ import {
   evaluateWindows,
   generateCandidateWindows,
   type EvaluatedWindow,
+  type PositionedSpan,
+  positionSpans,
   rankForDisplay,
   resolveReversal,
   type ReversibleFact,
@@ -954,6 +957,10 @@ export function createBot(token: string, deps: BotDeps): Bot {
   ): Promise<void> {
     const text = ctx.message.text;
 
+    // An open question of ours is the nearest referent: "the middle one" after
+    // "which 2 weeks?" is about November, not about the shortlist.
+    if (await resolvePendingSpan(ctx, text)) return;
+
     // Choosing an option reads as ordinary chatter — "the middle one", "2" —
     // so the stage-1 gate drops every phrasing of it. Matched here instead,
     // ahead of the gate but only against the tight shapes in
@@ -1101,6 +1108,15 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
     let result = parseAvailabilityMessage(text, extractionCtx);
     let source: "grammar" | "llm" = "grammar";
+
+    // "2 weeks in Nov" names a length and a period but no position. The
+    // grammar is right to decline it, and guessing would block a fortnight
+    // nobody chose — so ask, rather than lose the constraint to the LLM.
+    if (!result) {
+      const span = parseUnderspecifiedSpan(text, extractionCtx);
+      if (span && (await askWhichSpan(ctx, trip, span))) return finish(noted);
+    }
+
     if (!result) {
       if (!deps.extractor) return finish(noted);
 
@@ -1202,6 +1218,140 @@ export function createBot(token: string, deps: BotDeps): Bot {
    * Called after every accepted constraint, so the group watches the picture
    * sharpen without the chat filling with repeated posts.
    */
+  /**
+   * A question we asked, waiting on an answer — the context layer.
+   *
+   * "I'm not free 2 weeks in Nov" is answered with "the middle one", and those
+   * three words mean nothing without remembering what was asked. Keyed per
+   * chat *and* per person: two people can be mid-answer at once, and one
+   * person's "the middle one" must never land on the other's dates.
+   */
+  interface PendingSpan {
+    tripId: string;
+    participantId: string;
+    state: "AVAILABLE" | "UNAVAILABLE";
+    options: PositionedSpan[];
+    lengthLabel: string;
+    sourceText: string;
+    askedAt: number;
+  }
+  const pendingSpans = new Map<string, PendingSpan>();
+
+  /** Long enough to answer after a few messages, short enough not to haunt. */
+  const SPAN_QUESTION_TTL_MS = 15 * 60 * 1000;
+
+  const spanKey = (chatId: number | string, userId: number | string) =>
+    `${chatId}:${userId}`;
+
+  /**
+   * Try to read this message as the answer to our own question.
+   *
+   * Runs before everything else, including the shortlist's own "the middle
+   * one": an open question is the nearer referent, and answering the wrong one
+   * would put a fortnight of unavailability on dates nobody named.
+   */
+  async function resolvePendingSpan(
+    ctx: Context & { message: { text: string } },
+    text: string,
+  ): Promise<boolean> {
+    const key = spanKey(ctx.chat!.id, ctx.from!.id);
+    const pending = pendingSpans.get(key);
+    if (!pending) return false;
+    if (Date.now() - pending.askedAt > SPAN_QUESTION_TTL_MS) {
+      pendingSpans.delete(key);
+      return false;
+    }
+
+    const reference = parseOptionReference(text, pending.options.length);
+    // Not an answer — leave the question open rather than discarding it, and
+    // let the message carry on to the ordinary parsers.
+    if (!reference) return false;
+
+    pendingSpans.delete(key);
+    await applySpanAnswer(ctx, pending, pending.options[reference.index]!);
+    return true;
+  }
+
+  async function applySpanAnswer(
+    ctx: Context,
+    pending: PendingSpan,
+    chosen: PositionedSpan,
+  ): Promise<void> {
+    await addNlDeclarations(
+      deps.db,
+      pending.participantId,
+      [{ state: pending.state, startDate: chosen.start, endDate: chosen.end }],
+      pending.sourceText,
+    );
+    void recordEvent(deps.db, {
+      event: "span_clarified",
+      tripId: pending.tripId,
+      chatId: String(ctx.chat?.id ?? ""),
+      properties: { position: chosen.position },
+    });
+    const trip = await getTripById(deps.db, pending.tripId);
+    if (trip) await refreshTripCard(ctx, trip);
+  }
+
+  /**
+   * Ask which part of the period they meant. Three dated buttons, and the same
+   * three answerable in words — people reply "the middle one" to a list far
+   * more readily than they tap.
+   */
+  async function askWhichSpan(
+    ctx: Context & { message: { text: string } },
+    trip: Trip,
+    span: NonNullable<ReturnType<typeof parseUnderspecifiedSpan>>,
+  ): Promise<boolean> {
+    const options = positionSpans(span.within, span.days);
+    if (options.length < 2) return false;
+
+    const from = ctx.from!;
+    const participant = await ensureParticipantForTelegramUser(deps.db, trip.id, {
+      telegramUserId: String(from.id),
+      displayName: [from.first_name, from.last_name].filter(Boolean).join(" "),
+    });
+
+    const keyboard = new InlineKeyboard();
+    options.forEach((option, index) => {
+      keyboard.text(formatDateRange(option.start, option.end), `span:${index}`).row();
+    });
+
+    pendingSpans.set(spanKey(ctx.chat!.id, from.id), {
+      tripId: trip.id,
+      participantId: participant.id,
+      state: span.state === "AVAILABLE" ? "AVAILABLE" : "UNAVAILABLE",
+      options,
+      lengthLabel: span.lengthLabel,
+      sourceText: ctx.message.text,
+      askedAt: Date.now(),
+    });
+
+    await ctx.reply(`Which ${span.lengthLabel}?`, {
+      reply_parameters: { message_id: ctx.msg!.message_id },
+      reply_markup: keyboard,
+    });
+    return true;
+  }
+
+  bot.callbackQuery(/^span:(\d+)$/, async (ctx) => {
+    const key = spanKey(ctx.chat!.id, ctx.from.id);
+    const pending = pendingSpans.get(key);
+    const index = Number((ctx.match as RegExpMatchArray)[1]);
+    if (!pending || !pending.options[index]) {
+      await ctx.answerCallbackQuery("That question has expired — say it again.");
+      return;
+    }
+    pendingSpans.delete(key);
+    const chosen = pending.options[index]!;
+    await ctx.answerCallbackQuery("Got it.");
+    await ctx.editMessageText(
+      `${pending.state === "UNAVAILABLE" ? "Can't make" : "Free"} ` +
+        formatDateRange(chosen.start, chosen.end),
+    );
+    await applySpanAnswer(ctx, pending, chosen);
+  });
+
   /**
    * "The middle one" — picking a window by its position in the list.
    *
