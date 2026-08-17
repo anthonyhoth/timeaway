@@ -49,6 +49,11 @@ import {
   SG_PUBLIC_HOLIDAYS,
 } from "@timeaway/trip-engine";
 import { renderTripCard } from "./card.js";
+import {
+  logBotError,
+  userFacingCallbackError,
+  userFacingError,
+} from "./errors.js";
 import type { CalendarState } from "./calendar.js";
 import {
   calendarCaption,
@@ -1374,28 +1379,27 @@ export function createBot(token: string, deps: BotDeps): Bot {
   // bug, and corrupts any judgement about how well parsing works.
   let lastErrorAt = 0;
   bot.catch(async (err) => {
-    console.error("bot error", err.error);
+    // Full detail to the log, keyed by a reference the user can quote.
+    const { ref, kind } = logBotError(err.ctx, err.error);
     void recordEvent(deps.db, {
       event: "bot_error",
       chatId: err.ctx.chat ? String(err.ctx.chat.id) : null,
-      properties: { message: String(err.error).slice(0, 300) },
+      properties: { ref, kind },
     });
 
     // One apology a minute at most: an error inside the error path must not
-    // become a loop.
+    // become a loop, and a burst of failures should not bury the chat.
     const now = Date.now();
     if (now - lastErrorAt < 60_000) return;
     lastErrorAt = now;
     try {
       if (err.ctx.callbackQuery) {
-        await err.ctx.answerCallbackQuery("Something went wrong — try again.");
+        await err.ctx.answerCallbackQuery(userFacingCallbackError(ref));
       } else if (err.ctx.chat) {
-        await err.ctx.reply(
-          "Sorry — something went wrong on my side. Nothing was lost; try that again.",
-        );
+        await err.ctx.reply(userFacingError(ref));
       }
     } catch {
-      // The chat is unreachable; the log entry above is all we can do.
+      // The chat is unreachable; the logged entry above is all we can do.
     }
   });
 
