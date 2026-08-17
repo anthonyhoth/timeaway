@@ -8,6 +8,7 @@ import {
   parseDurationRange,
   parseParticipantNote,
   parseParticipationChange,
+  parseReversal,
   parseTripEdit,
   parseTripRequest,
   resolveHorizon,
@@ -37,6 +38,8 @@ import {
   setCardMessageId,
   setDestinationCandidates,
   setLeaveCap,
+  deleteNote,
+  listReversibleFacts,
   setParticipantOptedOut,
   setTripShape,
   setShortlistSize,
@@ -48,6 +51,8 @@ import {
   evaluateWindows,
   generateCandidateWindows,
   rankForDisplay,
+  resolveReversal,
+  type ReversibleFact,
   resolveRange,
   selectDiverseWindows,
   SG_PUBLIC_HOLIDAYS,
@@ -839,6 +844,104 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
   }
 
+  /** Pending "which did you mean?" questions, keyed by callback id. */
+  const pendingUndos = new Map<
+    string,
+    { participantId: string; tripId: string; fact: ReversibleFact }
+  >();
+  let pendingUndoSeq = 1;
+
+  /**
+   * Withdraw whatever the speaker just took back — or ask, when one
+   * conversational moment mixed dates, budget and preferences and "that" could
+   * mean any of them.
+   *
+   * Always says what it removed. A silent deletion is indistinguishable from
+   * the bug this exists to fix.
+   */
+  async function handleReversal(ctx: Context, trip: Trip): Promise<void> {
+    const from = ctx.from!;
+    const participant = await ensureParticipantForTelegramUser(deps.db, trip.id, {
+      telegramUserId: String(from.id),
+      displayName: [from.first_name, from.last_name].filter(Boolean).join(" "),
+    });
+
+    const facts = await listReversibleFacts(deps.db, participant.id);
+    const resolution = resolveReversal(facts);
+
+    if (resolution.action === "nothing") {
+      await ctx.reply("Nothing recorded from you yet — nothing to undo.", {
+        reply_parameters: { message_id: ctx.msg!.message_id },
+      });
+      return;
+    }
+
+    if (resolution.action === "ask") {
+      const keyboard = new InlineKeyboard();
+      for (const option of resolution.options) {
+        const id = String(pendingUndoSeq++);
+        pendingUndos.set(id, {
+          participantId: participant.id,
+          tripId: trip.id,
+          fact: option,
+        });
+        keyboard.text(option.label, `undo:${id}`).row();
+      }
+      await ctx.reply("Which one should I drop?", {
+        reply_parameters: { message_id: ctx.msg!.message_id },
+        reply_markup: keyboard,
+      });
+      return;
+    }
+
+    await applyUndo(deps.db, participant.id, resolution.fact);
+    void recordEvent(deps.db, {
+      event: "constraint_withdrawn",
+      tripId: trip.id,
+      chatId: String(ctx.chat!.id),
+      properties: { kind: resolution.fact.kind },
+    });
+    await ctx.reply(`Dropped ${resolution.fact.label}.`, {
+      reply_parameters: { message_id: ctx.msg!.message_id },
+    });
+    const updated = await getTripById(deps.db, trip.id);
+    if (updated) await refreshTripCard(ctx, updated);
+  }
+
+  async function applyUndo(
+    db: typeof deps.db,
+    participantId: string,
+    fact: ReversibleFact,
+  ): Promise<void> {
+    if (fact.kind === "leaveCap") {
+      await clearLeaveCap(db, participantId);
+    } else if (fact.kind === "declaration" && fact.id) {
+      await deleteDeclaration(db, participantId, fact.id);
+    } else if (fact.kind === "note" && fact.id) {
+      await deleteNote(db, participantId, fact.id);
+    }
+  }
+
+  bot.callbackQuery(/^undo:(.+)$/, async (ctx) => {
+    const pending = pendingUndos.get(ctx.match![1]!);
+    if (!pending) {
+      await ctx.answerCallbackQuery("That question has expired — say it again.");
+      return;
+    }
+    pendingUndos.delete(ctx.match![1]!);
+    await applyUndo(deps.db, pending.participantId, pending.fact);
+    void recordEvent(deps.db, {
+      event: "constraint_withdrawn",
+      tripId: pending.tripId,
+      chatId: String(ctx.chat?.id ?? ""),
+      properties: { kind: pending.fact.kind, viaQuestion: true },
+    });
+    await ctx.answerCallbackQuery("Dropped.");
+    await ctx.editMessageText(`Dropped ${pending.fact.label}.`);
+    const updated = await getTripById(deps.db, pending.tripId);
+    if (updated) await refreshTripCard(ctx, updated);
+  });
+
   async function handleAmbientMessage(
     ctx: Context & { message: { text: string } },
   ): Promise<void> {
@@ -859,6 +962,18 @@ export function createBot(token: string, deps: BotDeps): Bot {
       horizonEnd: trip.horizonEnd,
       destination: trip.destination,
     };
+
+    // Taking something back. Checked before everything else because a bare
+    // retraction carries no date for the engine's latest-wins rule to bite on:
+    // without this the withdrawn constraint stays, silently shaping the
+    // shortlist, while the speaker believes they have cancelled it.
+    //
+    // A retraction that names dates ("actually I can't do 20-25 Nov") is a new
+    // declaration, so availability parsing gets first refusal.
+    if (!parseAvailabilityMessage(text, extractionCtx) && parseReversal(text)) {
+      await handleReversal(ctx, trip);
+      return;
+    }
 
     // Stage 2: deterministic grammar handles the common phrasings for free.
     // The LLM is consulted only for what the grammar declines to claim

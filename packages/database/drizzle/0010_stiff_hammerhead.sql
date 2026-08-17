@@ -1,0 +1,1 @@
+ALTER TABLE "participants" ADD COLUMN "max_leave_days_set_at" timestamp with time zone;

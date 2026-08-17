@@ -138,6 +138,111 @@ export async function listOwnRecord(
   return { declarations, notes };
 }
 
+/**
+ * Everything a bare retraction ("actually nvm") could plausibly be referring
+ * to, for one speaker, newest first. Scoped to the participant: a retraction
+ * must never reach into somebody else's constraints.
+ */
+export async function listReversibleFacts(
+  db: Db,
+  participantId: string,
+): Promise<
+  {
+    kind: "declaration" | "leaveCap" | "note";
+    id?: string;
+    label: string;
+    recordedAt: Date;
+  }[]
+> {
+  const [declarations, notes, [participant]] = await Promise.all([
+    db
+      .select({
+        id: availabilityDeclarations.id,
+        state: availabilityDeclarations.state,
+        start: availabilityDeclarations.startDate,
+        end: availabilityDeclarations.endDate,
+        createdAt: availabilityDeclarations.createdAt,
+      })
+      .from(availabilityDeclarations)
+      .where(eq(availabilityDeclarations.participantId, participantId)),
+    db
+      .select({
+        id: participantNotes.id,
+        text: participantNotes.originalText,
+        createdAt: participantNotes.createdAt,
+      })
+      .from(participantNotes)
+      .where(eq(participantNotes.participantId, participantId)),
+    db
+      .select({
+        maxLeaveDays: participants.maxLeaveDays,
+        setAt: participants.maxLeaveDaysSetAt,
+      })
+      .from(participants)
+      .where(eq(participants.id, participantId)),
+  ]);
+
+  type Fact = {
+    kind: "declaration" | "leaveCap" | "note";
+    id?: string;
+    label: string;
+    recordedAt: Date;
+  };
+
+  const facts: Fact[] = [
+    ...declarations.map((d) => ({
+      kind: "declaration" as const,
+      id: d.id,
+      label: `${STATE_LABEL[d.state] ?? d.state} ${d.start} to ${d.end}`,
+      recordedAt: d.createdAt,
+    })),
+    ...notes.map((n) => ({
+      kind: "note" as const,
+      id: n.id,
+      label: `your note “${n.text}”`,
+      recordedAt: n.createdAt,
+    })),
+  ];
+
+  // A cap set before the column existed has no timestamp; treat it as old
+  // rather than dropping it, so it can still be retracted explicitly.
+  if (participant?.maxLeaveDays !== null && participant?.maxLeaveDays !== undefined) {
+    facts.push({
+      kind: "leaveCap" as const,
+      id: undefined,
+      label: `your ${participant.maxLeaveDays}-day leave limit`,
+      recordedAt: participant.setAt ?? new Date(0),
+    });
+  }
+
+  return facts.sort((a, b) => b.recordedAt.getTime() - a.recordedAt.getTime());
+}
+
+const STATE_LABEL: Record<string, string> = {
+  AVAILABLE: "free",
+  UNAVAILABLE: "can't make it",
+  MAYBE: "maybe",
+  UNKNOWN: "not sure yet",
+};
+
+/** Remove one note, checking it belongs to the asker. */
+export async function deleteNote(
+  db: Db,
+  participantId: string,
+  noteId: string,
+): Promise<boolean> {
+  const deleted = await db
+    .delete(participantNotes)
+    .where(
+      and(
+        eq(participantNotes.id, noteId),
+        eq(participantNotes.participantId, participantId),
+      ),
+    )
+    .returning({ id: participantNotes.id });
+  return deleted.length > 0;
+}
+
 /** Remove one recorded item, checking it belongs to the asker. */
 export async function deleteDeclaration(
   db: Db,
@@ -162,7 +267,11 @@ export async function clearLeaveCap(
 ): Promise<void> {
   await db
     .update(participants)
-    .set({ maxLeaveDays: null, maxLeaveDaysSourceText: null })
+    .set({
+      maxLeaveDays: null,
+      maxLeaveDaysSourceText: null,
+      maxLeaveDaysSetAt: null,
+    })
     .where(eq(participants.id, participantId));
 }
 
@@ -174,7 +283,11 @@ export async function setLeaveCap(
 ): Promise<void> {
   await db
     .update(participants)
-    .set({ maxLeaveDays, maxLeaveDaysSourceText: sourceText })
+    .set({
+      maxLeaveDays,
+      maxLeaveDaysSourceText: sourceText,
+      maxLeaveDaysSetAt: new Date(),
+    })
     .where(eq(participants.id, participantId));
 }
 

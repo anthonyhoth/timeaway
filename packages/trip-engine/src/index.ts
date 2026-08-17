@@ -10,3 +10,4 @@ export * from "./feasibility.js";
 export * from "./ranking.js";
 export * from "./diagnostics.js";
 export * from "./shortlist.js";
+export * from "./reversal.js";

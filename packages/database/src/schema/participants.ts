@@ -42,6 +42,10 @@ export const participants = pgTable(
     optedOut: boolean("opted_out").notNull().default(false),
     maxLeaveDays: integer("max_leave_days"),
     maxLeaveDaysSourceText: text("max_leave_days_source_text"),
+    // When the cap was stated. A bare retraction ("nvm") has to work out which
+    // of someone's recent facts it refers to, and the cap is a column rather
+    // than a row, so it carries no createdAt of its own.
+    maxLeaveDaysSetAt: timestamp("max_leave_days_set_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

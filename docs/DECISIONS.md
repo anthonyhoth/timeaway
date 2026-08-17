@@ -656,6 +656,60 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): retractions — the one gap the architecture could not close
+
+Founder shared external research on non-LLM ambient parsing. Most of it
+describes what this repo already does, and in two places we deliberately go
+further. One finding was a real gap, and it is now built.
+
+**Where the research agrees with the build.** Deterministic-first with the LLM
+as a narrow fallback, a date library rather than hand-rolled parsing (Chrono,
+adopted yesterday), a structured constraint store, and the claim that the moat
+is the consensus workflow rather than the parsing. All already true here.
+
+**Where we deliberately differ: scoring.** The research proposes weighted
+scores — `+10 available, +5 preferred, −20 unavailable`. We rank
+lexicographically over hard constraints instead, and should keep doing so.
+Under weighted scoring two people's preferences (+10) cancel one person's
+hard impossibility (−20), so a window someone *cannot legally travel on* — an
+NSman on mobilisation manning — can outrank one that works for everybody. That
+inverts the product's whole promise, which is a date that works for the *group*,
+not the most enthusiastic subset. Hard constraints eliminate; they do not
+subtract. Preferences are recorded as notes and never move the ranking.
+
+**Where we deliberately differ: five states, not two.** The research's model is
+available/unavailable. We keep UNKNOWN (a nurse whose roster is unpublished)
+distinct from UNANSWERED (silence), because collapsing them either punishes
+someone for a roster they do not control or invents consent from silence.
+
+**The real gap: bare retractions.** *"Actually nvm, I can't do that anymore."*
+Every other parser produces a *new* fact, and the engine settles conflicts by
+overlapping dates. A bare retraction names no date, so there is nothing to
+overlap: the withdrawn constraint survived, kept shaping the shortlist, and the
+speaker had been told it was handled. Silent, and unfalsifiable from the chat.
+
+Resolution follows the speaker's own recent history, never anyone else's:
+
+  * one recent fact → withdraw it
+  * several of the same kind → withdraw the newest, the ordinary reading of "that"
+  * several *kinds* inside one conversational moment (10 min) → **ask**, with a
+    button per kind
+
+Two invariants. A retraction **never withdraws more than one fact**, and the bot
+**always names what it dropped** — an invisible deletion is indistinguishable
+from the bug this fixes. A retraction that carries dates ("actually I can't do
+20-25 Nov") is a new declaration and stays on the ordinary path.
+
+`participants.max_leave_days_set_at` was added because the cap is a column
+rather than a row and so carried no timestamp of its own, which the
+same-moment window needs.
+
+**Not built: voting.** The research lists a VOTE intent. Confirmation is
+currently organiser-only and deliberate; turning date selection into a group
+vote is a product decision, not a parsing one, and is left open.
+
+---
+
 ## Decision (2026-08-17): Chrono over Duckling, guarded, beneath the Singapore layers
 
 Founder asked to evaluate Duckling against Chrono and adopt one, keeping the
