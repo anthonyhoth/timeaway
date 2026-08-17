@@ -5,6 +5,7 @@ import type { FoundPeriod } from "./periods.js";
 import { findFuzzyPeriod, findRelativePeriod } from "./periods.js";
 import { findChronoPeriod } from "./chrono.js";
 import { parseMultiSpan } from "./multi-span.js";
+import { namesOpaquePeriod } from "./opaque.js";
 import { namesLengthWithinPeriod } from "./span-shape.js";
 import { findSubPeriod } from "./subperiods.js";
 
@@ -484,6 +485,14 @@ export function parseAvailabilityMessage(
     const from = dateRef.range.start > ctx.horizonStart ? dateRef.range.start : ctx.horizonStart;
     const to = dateRef.range.end < ctx.horizonEnd ? dateRef.range.end : ctx.horizonEnd;
 
+    // "Only during my dec company closure" names December as the *anchor*, not
+    // the permitted window: the closure might be five days of it. Marking the
+    // month AVAILABLE handed the group thirty-one days nobody offered. The
+    // complement is still certain and still worth recording — everything
+    // outside is ruled out — but inside, the honest state is UNKNOWN, which is
+    // the same thing a roster-pending nurse gets and reads the same on the card.
+    const opaque = namesOpaquePeriod(text);
+
     // Rule out the horizon first, then carve the stated window back in —
     // latest-declaration-wins makes the ordering do the work.
     declarations.push({
@@ -495,7 +504,7 @@ export function parseAvailabilityMessage(
     // "I can only travel in June" against a November trip must still remember
     // *June*, so the group can weigh moving the dates.
     declarations.push({
-      state: "AVAILABLE",
+      state: opaque ? "UNKNOWN" : "AVAILABLE",
       start: dateRef.range.start,
       end: dateRef.range.end,
     });
