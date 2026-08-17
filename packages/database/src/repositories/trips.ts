@@ -157,6 +157,14 @@ export async function setTripShape(
   await db.update(trips).set(patch).where(eq(trips.id, tripId));
 }
 
+/** Retire a trip so the group can start fresh, keeping the history. */
+export async function archiveTrip(db: Db, tripId: string): Promise<void> {
+  await db
+    .update(trips)
+    .set({ status: "ARCHIVED", cardMessageId: null })
+    .where(eq(trips.id, tripId));
+}
+
 export async function setAmbientPaused(
   db: Db,
   tripId: string,

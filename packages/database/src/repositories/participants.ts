@@ -132,6 +132,42 @@ export async function addParticipantNote(
     .values({ participantId, kind, originalText });
 }
 
+/**
+ * Erase everything held about one person on one trip: their declarations,
+ * their notes (which contain verbatim message text), and the participant row
+ * itself. Cascades handle the children, but they are deleted explicitly so
+ * the intent is legible at the call site.
+ *
+ * PDPA expects a real deletion path, and storing people's own words — which
+ * the auditability rule requires — is precisely what creates that duty.
+ */
+export async function forgetParticipant(
+  db: Db,
+  participantId: string,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(availabilityDeclarations)
+      .where(eq(availabilityDeclarations.participantId, participantId));
+    await tx
+      .delete(participantNotes)
+      .where(eq(participantNotes.participantId, participantId));
+    await tx.delete(participants).where(eq(participants.id, participantId));
+  });
+}
+
+/** Every participant row this Telegram user has in a given chat's trips. */
+export async function findParticipantsForUserInTrip(
+  db: Db,
+  tripId: string,
+  userId: string,
+): Promise<Participant[]> {
+  return db
+    .select()
+    .from(participants)
+    .where(and(eq(participants.tripId, tripId), eq(participants.userId, userId)));
+}
+
 export async function listParticipants(
   db: Db,
   tripId: string,

@@ -19,6 +19,7 @@ import {
   WORD_PNG_BASE64,
 } from "./assets/generated.js";
 import { LandingPage } from "./pages/landing.js";
+import { PrivacyPage } from "./pages/privacy.js";
 import { TripPage } from "./pages/trip.js";
 
 export interface WebDeps {
@@ -70,6 +71,8 @@ export function createWebApp(deps: WebDeps): Hono {
       }) as string,
     ),
   );
+
+  app.get("/privacy", (c) => c.html(PrivacyPage() as string));
 
   app.get("/t/:code", async (c) => {
     const view = await loadPublicTripView(deps.db, c.req.param("code"));

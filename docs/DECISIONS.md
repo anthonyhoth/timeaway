@@ -624,6 +624,30 @@ Nothing downstream reads them. Feasibility, ranking and the shortlist are untouc
 
 ---
 
+## Decision (2026-08-17, founder-directed): trial-readiness pass — visibility, measurement, deletion, help
+
+Built from the founder's market-research readiness table and top-ten risk register, targeting the items rated blocker that were genuinely at zero.
+
+**Errors are now visible.** `bot.catch` logged to stdout only, so a failed API call looked to the group like the bot ignoring them — which would be read as poor parsing accuracy rather than a bug, corrupting judgement about every other risk. It now apologises in chat (rate-limited to once a minute, so an error inside the error path cannot loop) and records a `bot_error` event.
+
+**Analytics exist, in Postgres rather than a vendor.** `analytics_events` covers the funnel brief §6 already specified: `bot_added_to_group`, `planning_started`, `trip_created`, `constraint_captured`, `shortlist_shown`, `date_selected`, `participant_opted_out`, `participant_forgotten`, `trip_archived`, `extraction_failed`, `bot_error`. No API key is needed to start learning, and a PostHog sink can be added later without touching a call site. Writes swallow their own failures — analytics must never break the thing it measures. Properties carry counts, sources and states, never message text.
+
+**`constraint_captured` doubles as the accuracy signal.** It records whether the deterministic grammar or the LLM resolved each message, so the grammar-to-LLM ratio *is* the vocabulary-gap measure the founder's "beta-gate with accuracy target" needs. No separate eval harness required to start.
+
+**Privacy-mode failure is now explained rather than silent.** On joining, the bot checks `can_read_all_group_messages` and says plainly when it cannot read the chat. That covers the global setting; **per-group state is not exposed by any API**, and a group the bot was in *before* privacy mode was disabled keeps hiding messages until it is removed and re-added — undetectable from inside, because you cannot observe traffic you are not receiving. The join message therefore tells people to remove and re-add if the bot has been there before. Copy solves what detection cannot.
+
+**Deletion is real.** `/forget` removes a person's declarations, notes and participant row in a transaction, behind a confirmation. This matters because the auditability rule stores people's verbatim messages — the thing that makes the bot trustworthy is exactly what creates a retention duty. `/reset` archives a trip so a group can start again, organiser-only.
+
+**`/help` exists**, addressing the support-overload risk: previously a confused group member had nothing at all, since `/start` only responds in a DM.
+
+**A privacy page ships at `/privacy`**, written plainly rather than as boilerplate — what is kept, what is discarded on arrival, who can see the trip link, how to delete, a 12-month retention limit on archived trips, and the fact that unparsed text reaches OpenAI. A vague policy would undercut the disclosure the bot already makes in chat.
+
+**Deliberately not built:** confidence scores, because the ranking is lexicographic precisely so every position is explainable in a sentence, and coverage ("3 of 5 in", named roster-pending) is the honest confidence signal. Digest mode and quiet hours were also skipped — the no-noise design (react, don't reply; edit one card) already prevents the noise risk.
+
+**Still open after this pass:** a correction path (nobody can see or fix what the bot recorded about them), hosting, in-memory state, uncapped LLM spend, the 2027 data cliff, and the nudge loop that would close the founder's "habit-forming" gap.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

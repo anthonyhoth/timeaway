@@ -64,11 +64,14 @@ if (mode === "webhook") {
 void bot.api
   .setMyCommands([
     { command: "newtrip", description: "Start planning a trip" },
+    { command: "help", description: "What I do and how to talk to me" },
     { command: "dates", description: "Show the best dates so far" },
     { command: "calendar", description: "Mark your dates on a calendar" },
     { command: "cancel", description: "Abandon the current trip setup" },
     { command: "pause", description: "Stop reading this chat" },
     { command: "resume", description: "Resume reading this chat" },
+    { command: "forget", description: "Delete everything I hold about you" },
+    { command: "reset", description: "Archive this trip and start over" },
   ])
   .catch((err) => console.error("setMyCommands failed", err));
 

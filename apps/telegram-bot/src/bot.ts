@@ -17,13 +17,17 @@ import {
   addCalendarDeclaration,
   addNlDeclarations,
   addParticipantNote,
+  archiveTrip,
   createTrip,
   listDeclarations,
   ensureParticipantForTelegramUser,
+  findParticipantsForUserInTrip,
+  forgetParticipant,
   findActivePlanningTripByChatId,
   getTripById,
   getTripByShortCode,
   loadTripPlanningState,
+  recordEvent,
   selectTripDates,
   setAmbientPaused,
   setCardMessageId,
@@ -118,7 +122,9 @@ const JOIN_MESSAGE =
   "(\u201ccmi October\u201d, \u201conly got 2 days AL\u201d). I'll work out " +
   "which windows fit everyone.\n\n" +
   "I only keep what's about dates, and I'm not reading anything until you " +
-  "start. /pause stops me anytime.";
+  "start. /pause stops me anytime, /help explains the rest.\n\n" +
+  "If I've been in this group before, remove and re-add me — otherwise " +
+  "Telegram keeps hiding your messages from me.";
 
 /**
  * Telegram only accepts publicly resolvable URLs in inline keyboard buttons,
@@ -185,6 +191,25 @@ export function createBot(token: string, deps: BotDeps): Bot {
         deps.db,
         String(ctx.chat.id),
       );
+      void recordEvent(deps.db, {
+        event: "bot_added_to_group",
+        chatId: String(ctx.chat.id),
+        properties: { canReadMessages: ctx.me.can_read_all_group_messages },
+      });
+
+      // Global privacy mode is visible; per-group state is not, and a group
+      // the bot was in *before* privacy mode was disabled keeps blocking
+      // messages until it is removed and re-added. Both cases fail silently,
+      // so both are called out up front.
+      if (!ctx.me.can_read_all_group_messages) {
+        await ctx.reply(
+          "Heads up — I can't read messages in groups yet, so I won't pick up " +
+            "any dates. The bot owner needs to turn off privacy mode in " +
+            "@BotFather, then remove and re-add me here.",
+        );
+        return;
+      }
+
       await ctx.reply(JOIN_MESSAGE, {
         reply_markup: existing
           ? undefined
@@ -249,6 +274,101 @@ export function createBot(token: string, deps: BotDeps): Bot {
     if (!ctx.from) return;
     const existed = wizards.delete(keyOf(ctx.chat.id, ctx.from.id));
     await ctx.reply(existed ? "Trip setup abandoned." : "Nothing to cancel.");
+  });
+
+  bot.command("help", async (ctx) => {
+    await ctx.reply(
+      [
+        "I find trip dates that work for your whole group.",
+        "",
+        "Just talk normally — I pick up things like “cmi October”, “only got",
+        "2 days AL”, “roster not out yet”, “count me out”, “let's try Korea too”.",
+        "",
+        "Commands:",
+        "/dates — show the best options now",
+        "/calendar — mark your dates on a calendar",
+        "/newtrip — start another trip",
+        "/pause · /resume — stop or restart me reading this chat",
+        "/forget — delete everything I hold about you here",
+        "/reset — archive this trip and start over",
+        "",
+        "I only keep what's about dates, plus what you say about budget or",
+        "destinations. Nothing else is stored.",
+      ].join("\n"),
+    );
+  });
+
+  bot.command("forget", async (ctx) => {
+    if (!ctx.from) return;
+    const trip = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat.id),
+    );
+    if (!trip) {
+      await ctx.reply("Nothing to forget here — no trip is being planned.");
+      return;
+    }
+    await ctx.reply(
+      "This deletes your dates, your notes and your place in this trip. " +
+        "It can't be undone.",
+      {
+        reply_parameters: { message_id: ctx.msg.message_id },
+        reply_markup: new InlineKeyboard().text(
+          "Delete my data",
+          `forget:${trip.id}`,
+        ),
+      },
+    );
+  });
+
+  bot.callbackQuery(/^forget:(.+)$/, async (ctx) => {
+    const tripId = (ctx.match as RegExpMatchArray)[1]!;
+    const user = await upsertTelegramUser(deps.db, {
+      telegramUserId: String(ctx.from.id),
+      displayName: [ctx.from.first_name, ctx.from.last_name]
+        .filter(Boolean)
+        .join(" "),
+    });
+    const rows = await findParticipantsForUserInTrip(deps.db, tripId, user.id);
+    for (const row of rows) await forgetParticipant(deps.db, row.id);
+
+    void recordEvent(deps.db, {
+      event: "participant_forgotten",
+      tripId,
+      chatId: ctx.chat ? String(ctx.chat.id) : null,
+      properties: { rows: rows.length },
+    });
+
+    await ctx.answerCallbackQuery("Deleted.");
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await ctx.reply("Done — I've deleted everything I had about you here.");
+    const trip = await getTripById(deps.db, tripId);
+    if (trip) await refreshTripCard(ctx, trip, { forceNew: true });
+  });
+
+  bot.command("reset", async (ctx) => {
+    if (!isGroup(ctx)) return;
+    const trip = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat.id),
+    );
+    if (!trip) {
+      await ctx.reply("No trip to reset — /newtrip starts one.");
+      return;
+    }
+    if (!(await isTripOrganiser(trip, ctx.from!))) {
+      await ctx.reply("Only the organiser can reset this trip.");
+      return;
+    }
+    await archiveTrip(deps.db, trip.id);
+    void recordEvent(deps.db, {
+      event: "trip_archived",
+      tripId: trip.id,
+      chatId: String(ctx.chat.id),
+    });
+    await ctx.reply(
+      "Trip archived. /newtrip when you want to start another one.",
+    );
   });
 
   bot.command("pause", async (ctx) => {
@@ -379,6 +499,15 @@ export function createBot(token: string, deps: BotDeps): Bot {
       telegramChatId: isGroup(ctx) ? String(ctx.chat!.id) : null,
     });
     wizards.delete(keyOf(ctx.chat!.id, from.id));
+    void recordEvent(deps.db, {
+      event: "trip_created",
+      tripId: trip.id,
+      chatId: isGroup(ctx) ? String(ctx.chat!.id) : null,
+      properties: {
+        via: isGroup(ctx) ? "group_wizard" : "dm_wizard",
+        destinations: state.destinations.length,
+      },
+    });
 
     const tripUrl = `${deps.publicBaseUrl}/t/${trip.shortCode}`;
 
@@ -598,6 +727,11 @@ export function createBot(token: string, deps: BotDeps): Bot {
           },
         );
         await setParticipantOptedOut(deps.db, participant.id, change === "OUT");
+        void recordEvent(deps.db, {
+          event: change === "OUT" ? "participant_opted_out" : "participant_opted_in",
+          tripId: trip.id,
+          chatId: String(ctx.chat!.id),
+        });
         try {
           await ctx.react("✍");
         } catch (error) {
@@ -669,12 +803,19 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
 
     let result = parseAvailabilityMessage(text, extractionCtx);
+    let source: "grammar" | "llm" = "grammar";
     if (!result) {
       if (!deps.extractor) return;
+      source = "llm";
       try {
         result = await deps.extractor.extract(text, extractionCtx);
       } catch (error) {
         console.error("extraction failed", error);
+        void recordEvent(deps.db, {
+          event: "extraction_failed",
+          tripId: trip.id,
+          chatId: String(ctx.chat!.id),
+        });
         return;
       }
     }
@@ -841,6 +982,18 @@ export function createBot(token: string, deps: BotDeps): Bot {
       link_preview_options: { is_disabled: true },
     });
     await setCardMessageId(deps.db, trip.id, String(message.message_id));
+    void recordEvent(deps.db, {
+      event: "shortlist_shown",
+      tripId: trip.id,
+      chatId,
+      properties: {
+        options: shortlist.length,
+        round: shortlistSize,
+        participants: travelling.length,
+        feasible: ranked.feasible.length,
+        diagnostics: diagnostics.length,
+      },
+    });
   }
 
   interface PendingEdit {
@@ -947,6 +1100,12 @@ export function createBot(token: string, deps: BotDeps): Bot {
         .join(" "),
     });
 
+    void recordEvent(deps.db, {
+      event: "planning_started",
+      tripId: trip.id,
+      chatId: String(ctx.chat.id),
+      properties: { via: "join_button" },
+    });
     await ctx.answerCallbackQuery("Listening now.");
     await ctx.editMessageReplyMarkup({ reply_markup: undefined });
     await refreshTripCard(ctx, trip);
@@ -1026,6 +1185,12 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
 
     await selectTripDates(deps.db, trip.id, start!, end!);
+    void recordEvent(deps.db, {
+      event: "date_selected",
+      tripId: trip.id,
+      chatId: String(ctx.chat!.id),
+      properties: { start, end },
+    });
     await ctx.answerCallbackQuery("Dates confirmed 🎉");
     const updated = await getTripById(deps.db, trip.id);
     if (updated) await refreshTripCard(ctx, updated);
@@ -1204,8 +1369,34 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
   });
 
-  bot.catch((err) => {
+  // A failed API call previously vanished into the console, so the group saw
+  // the bot silently ignore them — which reads as poor accuracy rather than a
+  // bug, and corrupts any judgement about how well parsing works.
+  let lastErrorAt = 0;
+  bot.catch(async (err) => {
     console.error("bot error", err.error);
+    void recordEvent(deps.db, {
+      event: "bot_error",
+      chatId: err.ctx.chat ? String(err.ctx.chat.id) : null,
+      properties: { message: String(err.error).slice(0, 300) },
+    });
+
+    // One apology a minute at most: an error inside the error path must not
+    // become a loop.
+    const now = Date.now();
+    if (now - lastErrorAt < 60_000) return;
+    lastErrorAt = now;
+    try {
+      if (err.ctx.callbackQuery) {
+        await err.ctx.answerCallbackQuery("Something went wrong — try again.");
+      } else if (err.ctx.chat) {
+        await err.ctx.reply(
+          "Sorry — something went wrong on my side. Nothing was lost; try that again.",
+        );
+      }
+    } catch {
+      // The chat is unreachable; the log entry above is all we can do.
+    }
   });
 
   return bot;
