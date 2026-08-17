@@ -656,6 +656,41 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): tell the difference between a bad minute and a dead extractor
+
+Live group testing surfaced a silent bot. The cause was an exhausted OpenAI
+balance, but the *bug* was ours: every extractor failure was handled the same
+way — log, record `extraction_failed`, `return`. Two things were wrong with
+that.
+
+**The group heard nothing.** Someone types their dates, the grammar declines,
+the LLM throws, and the bot goes quiet. Silence in a chat reads as *received*,
+so people believe their availability is recorded when nothing was written. That
+is worse than an error: it is a wrong answer delivered as a non-answer.
+
+**We kept paying for the same failure.** A dead key or an empty balance fails
+identically on every subsequent message — a round-trip of latency each time, and
+the real cause buried under thousands of identical stack traces.
+
+So failures are now classified. `quota` and `auth` are **standing** — the next
+call cannot succeed — and trip a breaker that skips the call outright.
+Everything else is **transient**: stay silent, retry on the next message, since
+a one-off timeout should cost nothing more than the parse it missed. Notably
+**429 is ambiguous** and cannot be classified by status: rate-limiting is
+transient, an exhausted balance is not, and only the error `code` separates
+them.
+
+The breaker is a 15-minute **cooldown, not a latch**, and any success clears it,
+so topping up credits restores the bot without a restart.
+
+When it trips, the group is told once per chat per hour, and the notice **names
+no vendor and admits no billing problem** — that is our business, not theirs.
+It offers phrasings the deterministic grammar handles and points at `/dates`,
+so the trip keeps moving through our outage rather than stalling on it. This is
+the same posture as the spend cap: degrade to grammar-only, never stop.
+
+---
+
 ## Decision (2026-08-17): correction path, spend cap, data-cliff honesty, nudge loop, deploy config
 
 Clearing the five items left open after the trial-readiness pass.

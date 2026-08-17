@@ -54,6 +54,10 @@ import {
 } from "@timeaway/trip-engine";
 import { renderTripCard } from "./card.js";
 import {
+  EXTRACTOR_DEGRADED_NOTICE,
+  ExtractorHealth,
+} from "./extractor-health.js";
+import {
   logBotError,
   userFacingCallbackError,
   userFacingError,
@@ -956,6 +960,18 @@ export function createBot(token: string, deps: BotDeps): Bot {
     if (!result) {
       if (!deps.extractor) return;
 
+      // A standing outage (no credits, dead key) fails identically on every
+      // message. Skip the call while the breaker is open, and say something —
+      // silence here reads as "recorded" to the person who just typed dates.
+      if (!extractorHealth.available()) {
+        if (extractorHealth.shouldNotify(String(ctx.chat!.id))) {
+          await ctx.reply(EXTRACTOR_DEGRADED_NOTICE, {
+            reply_parameters: { message_id: ctx.msg!.message_id },
+          });
+        }
+        return;
+      }
+
       // Spend is otherwise unbounded: cost scales with how chatty a group is,
       // and nothing stops the bot being added to a 500-person chat. Past the
       // cap it degrades to grammar-only rather than stopping — the common
@@ -979,13 +995,26 @@ export function createBot(token: string, deps: BotDeps): Bot {
       source = "llm";
       try {
         result = await deps.extractor.extract(text, extractionCtx);
+        extractorHealth.recordSuccess();
       } catch (error) {
-        console.error("extraction failed", error);
+        const failure = extractorHealth.record(error);
+        const { ref } = logBotError(ctx, error);
         void recordEvent(deps.db, {
           event: "extraction_failed",
           tripId: trip.id,
           chatId: String(ctx.chat!.id),
+          properties: { failure, ref },
         });
+        // Transient failures stay quiet and retry on the next message. A
+        // standing one has just tripped the breaker, so own it out loud.
+        if (
+          failure !== "transient" &&
+          extractorHealth.shouldNotify(String(ctx.chat!.id))
+        ) {
+          await ctx.reply(EXTRACTOR_DEGRADED_NOTICE, {
+            reply_parameters: { message_id: ctx.msg!.message_id },
+          });
+        }
         return;
       }
     }
@@ -1180,6 +1209,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
   }
   const pendingEdits = new Map<string, PendingEdit>();
   let pendingEditSeq = 1;
+  const extractorHealth = new ExtractorHealth();
 
   async function isTripOrganiser(
     trip: Trip,
