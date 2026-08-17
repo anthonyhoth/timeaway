@@ -628,7 +628,15 @@ Nothing downstream reads them. Feasibility, ranking and the shortlist are untouc
 
 Built from the founder's market-research readiness table and top-ten risk register, targeting the items rated blocker that were genuinely at zero.
 
-**Errors are now visible.** `bot.catch` logged to stdout only, so a failed API call looked to the group like the bot ignoring them — which would be read as poor parsing accuracy rather than a bug, corrupting judgement about every other risk. It now apologises in chat (rate-limited to once a minute, so an error inside the error path cannot loop) and records a `bot_error` event.
+**Errors are now visible, and traceable.** `bot.catch` logged to stdout only, so a failed API call looked to the group like the bot ignoring them — read as poor parsing accuracy rather than a bug, corrupting judgement about every other risk.
+
+Two audiences, one incident, joined by a **short reference code**:
+- **The group** gets a calm, generic line that never blames them, never leaks internals, and quotes the ref: *"Something went wrong on my end — nothing you did. Give it another go in a moment. If it keeps happening, quote ref a3f9c2."* Callback failures get a terse toast version, under Telegram's ~200-character cap. Rate-limited to one apology a minute, so an error inside the error path cannot loop and a burst cannot bury the chat.
+- **The log** gets one structured JSON line per incident — ref, kind, chat, user, update type, and for Telegram failures the `method`, `error_code` and `description` (the last is what identified the localhost-button bug). Structured so it stays greppable by ref and pipes into an aggregator later without reformatting.
+
+**The log deliberately never records what anyone wrote.** The privacy page promises non-planning messages are not stored, and an error path must not quietly become the exception. Free text contributes only its *length* — enough to distinguish a one-word reply from a paragraph. Commands and callback payloads *are* logged, because they are our own vocabulary: `sel:2026-11-07:2026-11-10` is far more useful than "a callback happened", and contains nothing a person typed. A test asserts an address embedded in a message never reaches the log.
+
+Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patterns are countable in analytics without reading logs. The `bot_error` event carries the ref and kind only. The earlier copy claimed "nothing was lost", which could not be guaranteed, and was dropped.
 
 **Analytics exist, in Postgres rather than a vendor.** `analytics_events` covers the funnel brief §6 already specified: `bot_added_to_group`, `planning_started`, `trip_created`, `constraint_captured`, `shortlist_shown`, `date_selected`, `participant_opted_out`, `participant_forgotten`, `trip_archived`, `extraction_failed`, `bot_error`. No API key is needed to start learning, and a PostHog sink can be added later without touching a call site. Writes swallow their own failures — analytics must never break the thing it measures. Properties carry counts, sources and states, never message text.
 
