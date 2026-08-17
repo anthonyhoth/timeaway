@@ -656,6 +656,46 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): the gate's contract, made executable
+
+Founder: *"'we want to go Hainan this year end' shouldn't need an LLM breaker
+call."* Correct — and it never made one. The message was **discarded by the
+stage-1 gate** before any parser saw it, so the trip-edit support written for
+exactly that sentence an hour earlier was dead code.
+
+`mightContainConstraint` returned false for "we want to go Hainan this year
+end", "this year end", "end of this year" and "let's do Japan". None of them
+contain a month, a number, or availability vocabulary, and the gate had no
+words for planning aloud.
+
+This is the **third** time the gate has silently swallowed a working parser —
+"AL" while the leave parser understood it, "ict" through a typo, and now every
+phrasing of planning aloud. The structural fault is that the gate's vocabulary
+lives here while the capability lives in the grammar, and the failure is
+invisible: the message does not error, it vanishes.
+
+So the contract is now stated and **enforced against the parsers themselves**:
+*the gate may only reject a message no parser downstream would have claimed.*
+`prefilter.test.ts` runs a corpus through every parser and asserts that
+anything one of them reads also passes the gate. It fails the next time a
+parser learns something the gate has not.
+
+It earned that immediately, finding three leaks nobody had reported:
+
+  * `"count me out"` — opting out of a trip, gated out since the participation
+    parser was written;
+  * `"budget is tight for me"` — the constraint the founder's own research
+    flagged as more likely to sink a trip than dates;
+  * `"actually nvm"` — every bare retraction, including the ones the reversal
+    work was built for.
+
+All three are now let through. The gate stays deliberately loose in the other
+direction — "ok lah" passes and every parser declines it — because its
+documented bias is recall over precision: a false positive costs a cheap parse,
+a false negative loses a constraint in silence.
+
+---
+
 ## Decision (2026-08-17): acknowledging is not the same as explaining
 
 Founder: *"No messages are being reacted to. Do I need to remove the bot and
