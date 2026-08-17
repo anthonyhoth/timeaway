@@ -68,6 +68,7 @@ import {
   SG_PUBLIC_HOLIDAYS,
 } from "@timeaway/trip-engine";
 import { renderTripCard } from "./card.js";
+import { classifyMembership } from "./membership.js";
 import {
   EXTRACTOR_DEGRADED_NOTICE,
   ExtractorHealth,
@@ -145,6 +146,30 @@ const DURATION_PROMPT =
 /** Long weekend through a full week — used when the organiser can't say yet. */
 const DEFAULT_DURATION = { min: 3, max: 7 };
 
+/**
+ * Reply parameters that can never suppress the message itself.
+ *
+ * Telegram rejects the whole `sendMessage` when the message being replied to
+ * cannot be found — deleted, or from before the bot was re-added to the group,
+ * which loses access to earlier history. The group then sees **nothing at
+ * all**, with the failure visible only in our logs.
+ *
+ * That happened live: the extractor-outage notice was rejected with "message
+ * to be replied not found", so the bot went silent exactly when it had
+ * something important to say. `allow_sending_without_reply` degrades the
+ * reply-to into a plain message instead of losing it.
+ *
+ * Every reply goes through here rather than building the object inline, and a
+ * test asserts as much — the same class of bug (an inline button URL killing
+ * its whole message) has now bitten twice.
+ */
+function replyTo(messageId: number): {
+  message_id: number;
+  allow_sending_without_reply: true;
+} {
+  return { message_id: messageId, allow_sending_without_reply: true };
+}
+
 const JOIN_MESSAGE =
   "Hey! I'm Timeaway — I help this group find trip dates that actually work.\n\n" +
   "Tap below and then just talk about dates the way you normally would " +
@@ -181,7 +206,7 @@ function isGroup(ctx: Context): boolean {
 
 function forceReply(messageId: number, placeholder: string) {
   return {
-    reply_parameters: { message_id: messageId },
+    reply_parameters: replyTo(messageId),
     reply_markup: {
       force_reply: true as const,
       input_field_placeholder: placeholder,
@@ -251,15 +276,33 @@ export function createBot(token: string, deps: BotDeps): Bot {
   }
 
   bot.on("my_chat_member", async (ctx) => {
-    const status = ctx.myChatMember.new_chat_member.status;
-    const wasOut = ["left", "kicked"].includes(
-      ctx.myChatMember.old_chat_member.status,
+    const before = ctx.myChatMember.old_chat_member;
+    const after = ctx.myChatMember.new_chat_member;
+    const change = classifyMembership(before.status, after.status, {
+      wasMember: "is_member" in before ? before.is_member : undefined,
+      isMember: "is_member" in after ? after.is_member : undefined,
+    });
+
+    // Logged unconditionally. Being added and hearing nothing back is the
+    // hardest failure to diagnose from the outside — it looks identical to the
+    // bot being down — so every transition leaves a trace, matched or not.
+    console.log(
+      JSON.stringify({
+        level: "info",
+        event: "my_chat_member",
+        at: new Date().toISOString(),
+        chatId: ctx.chat?.id ?? null,
+        chatType: ctx.chat?.type ?? null,
+        from: before.status,
+        to: after.status,
+        change,
+      }),
     );
 
     // Removed. Clear the slate now rather than waiting for a re-add, so a bot
     // that is never re-added does not leave a live trip pointing at a chat it
     // cannot see.
-    if (isGroup(ctx) && ["left", "kicked"].includes(status)) {
+    if (isGroup(ctx) && change === "left") {
       const ended = await endPlanningIn(ctx.chat.id);
       if (ended) {
         void recordEvent(deps.db, {
@@ -271,7 +314,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       return;
     }
 
-    if (isGroup(ctx) && wasOut && status === "member") {
+    if (isGroup(ctx) && change === "joined") {
       // A tap is the whole setup: no command to remember, and whoever taps
       // becomes organiser — more meaningful than whoever added the bot
       // (founder-decided, docs/DECISIONS.md).
@@ -473,7 +516,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     );
 
     await ctx.reply(lines.join("\n"), {
-      reply_parameters: { message_id: ctx.msg.message_id },
+      reply_parameters: replyTo(ctx.msg.message_id),
       reply_markup: keyboard,
     });
   });
@@ -547,7 +590,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       "This deletes your dates, your notes and your place in this trip. " +
         "It can't be undone.",
       {
-        reply_parameters: { message_id: ctx.msg.message_id },
+        reply_parameters: replyTo(ctx.msg.message_id),
         reply_markup: new InlineKeyboard().text(
           "Delete my data",
           `forget:${trip.id}`,
@@ -695,7 +738,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
           "Create this trip?",
         ].join("\n"),
         {
-          reply_parameters: { message_id: replyToId },
+          reply_parameters: replyTo(replyToId),
           reply_markup: new InlineKeyboard()
             .text("Create trip", "trip:create")
             .text("Start over", "trip:restart"),
@@ -780,7 +823,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
           tripUrl,
         ].join("\n"),
         {
-          reply_parameters: { message_id: replyToId },
+          reply_parameters: replyTo(replyToId),
           reply_markup: keyboard,
           link_preview_options: { is_disabled: true },
         },
@@ -797,7 +840,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       tripUrl,
     ];
     await ctx.reply(lines.join("\n"), {
-      reply_parameters: { message_id: replyToId },
+      reply_parameters: replyTo(replyToId),
       link_preview_options: { is_disabled: true },
     });
 
@@ -854,7 +897,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       state.askedHorizon = true;
       await ctx.reply(
         "No problem — I'll work it out from whatever everyone says.",
-        { reply_parameters: { message_id: messageId } },
+        { reply_parameters: replyTo(messageId) },
       );
       await promptNextStep(ctx, state, messageId);
       return;
@@ -866,7 +909,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     await ctx.reply(
       `No problem — I'll assume ${DEFAULT_DURATION.min}–${DEFAULT_DURATION.max} days ` +
         "for now, anything from a long weekend to a week.",
-      { reply_parameters: { message_id: messageId } },
+      { reply_parameters: replyTo(messageId) },
     );
     await finaliseTrip(ctx, state, messageId);
   }
@@ -1016,7 +1059,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
     if (resolution.action === "nothing") {
       await ctx.reply("Nothing recorded from you yet — nothing to undo.", {
-        reply_parameters: { message_id: ctx.msg!.message_id },
+        reply_parameters: replyTo(ctx.msg!.message_id),
       });
       return;
     }
@@ -1033,7 +1076,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
         keyboard.text(option.label, `undo:${id}`).row();
       }
       await ctx.reply("Which one should I drop?", {
-        reply_parameters: { message_id: ctx.msg!.message_id },
+        reply_parameters: replyTo(ctx.msg!.message_id),
         reply_markup: keyboard,
       });
       return;
@@ -1047,7 +1090,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       properties: { kind: resolution.fact.kind },
     });
     await ctx.reply(`Dropped ${resolution.fact.label}.`, {
-      reply_parameters: { message_id: ctx.msg!.message_id },
+      reply_parameters: replyTo(ctx.msg!.message_id),
     });
     const updated = await getTripById(deps.db, trip.id);
     if (updated) await refreshTripCard(ctx, updated);
@@ -1233,7 +1276,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
           const id = String(pendingEditSeq++);
           pendingEdits.set(id, { tripId: trip.id, edit, current });
           await ctx.reply(`Change the trip to ${describeTripEdit(edit)}?`, {
-            reply_parameters: { message_id: ctx.msg!.message_id },
+            reply_parameters: replyTo(ctx.msg!.message_id),
             reply_markup: new InlineKeyboard().text("Apply", `edit:${id}`),
           });
         }
@@ -1261,7 +1304,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       if (!extractorHealth.available()) {
         if (extractorHealth.shouldNotify(String(ctx.chat!.id))) {
           await ctx.reply(EXTRACTOR_DEGRADED_NOTICE, {
-            reply_parameters: { message_id: ctx.msg!.message_id },
+            reply_parameters: replyTo(ctx.msg!.message_id),
           });
         }
         return finish(noted);
@@ -1307,7 +1350,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
           extractorHealth.shouldNotify(String(ctx.chat!.id))
         ) {
           await ctx.reply(EXTRACTOR_DEGRADED_NOTICE, {
-            reply_parameters: { message_id: ctx.msg!.message_id },
+            reply_parameters: replyTo(ctx.msg!.message_id),
           });
         }
         return finish(noted);
@@ -1463,7 +1506,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     });
 
     await ctx.reply(`Which ${span.lengthLabel}?`, {
-      reply_parameters: { message_id: ctx.msg!.message_id },
+      reply_parameters: replyTo(ctx.msg!.message_id),
       reply_markup: keyboard,
     });
     return true;
@@ -1519,7 +1562,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
     if (!(await isTripOrganiser(trip, ctx.from!))) {
       await ctx.reply(`Noted — ${label}. ${await organiserName(trip)} confirms.`, {
-        reply_parameters: { message_id: ctx.msg!.message_id },
+        reply_parameters: replyTo(ctx.msg!.message_id),
       });
       return true;
     }

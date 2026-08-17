@@ -656,6 +656,52 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): audit — why the bot went silent after a re-add
+
+Founder: re-adding the bot produced no greeting and no response to commands.
+Three causes, found by reading the logs and the analytics table rather than
+guessing. The bot was healthy throughout: polling, no webhook set, privacy off,
+send permission in both groups.
+
+**1. A reply target killed the whole message.** The extractor-outage notice was
+rejected with `400 Bad Request: message to be replied not found`. Telegram
+discards the **entire** `sendMessage` when the message being replied to cannot
+be found — deleted, or from before a re-add, since removal loses access to
+earlier history. Sixteen reply sites all built `reply_parameters` inline, so
+any of them could silently suppress its own message.
+
+All sixteen now go through `replyTo()`, which sets
+`allow_sending_without_reply` — the reply-to degrades into a plain message
+instead of vanishing. **This is the second time a decoration has killed its own
+message**; the first was a localhost inline-button URL. So there is now a
+source-level test asserting no inline `reply_parameters` and that
+`isButtonSafeUrl` is still in use. Unit tests cannot catch this class — the
+rejection happens on Telegram's side — so the guard has to be on the source.
+
+**2. Being added as an administrator was not "joining".** The handler tested
+`status === "member"` and nothing else. Adding the bot as an admin — routine in
+supergroups — yields `"administrator"`, matched no branch, and sent no
+greeting, with no error to explain it. `classifyMembership` replaces the inline
+condition and is **total**: every transition classifies as joined, left, or
+other, where "other" is a logged answer rather than an unmatched condition that
+disappears. It also handles `restricted` by `is_member`, and treats an
+unfamiliar status as absent — failing to greet is recoverable, wrongly
+believing we are in a chat is not.
+
+Every `my_chat_member` update is now logged with its from/to statuses,
+regardless of outcome. Being added and hearing nothing is the hardest failure
+to diagnose from outside, because it looks exactly like the bot being down.
+
+**3. It sometimes *was* down.** Two `bot_added_to_group` events landed one
+second apart for different chats immediately after a restart — Telegram
+redelivering updates queued while the process was stopped. Every restart is a
+few seconds of silence, and during that window the group's experience is
+identical to a broken bot. Inherent to a local dev bot rather than a defect,
+but worth naming: **a silent bot is not evidence of a code fault**, and the
+membership log above is what now tells the two apart.
+
+---
+
 ## Decision (2026-08-17): a new trip has no horizon
 
 Founder: *"A trip plan that is newly created should not have any pre-defined
