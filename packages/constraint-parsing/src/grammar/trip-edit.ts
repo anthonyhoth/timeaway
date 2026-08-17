@@ -21,6 +21,22 @@ export interface TripEdit {
   destructive: boolean;
 }
 
+/**
+ * Someone describing *themselves*, not the plan.
+ *
+ * The caller parses availability first, which handles "can also do December".
+ * That ordering is not enough on its own: when availability *declines* — and it
+ * declines whenever a statement is ambiguous — the message falls through to
+ * here, where "not" is an edit word. "I'm not free 2 weeks in Nov" was
+ * therefore read as *move the whole trip to November*, and from an organiser
+ * that applied silently.
+ *
+ * A first-person availability statement can never be a change to the trip's
+ * shape, however ambiguous the dates in it are.
+ */
+const ABOUT_THEMSELVES =
+  /\b(?:i|i'?m|im|my|me|myself|i'?ve|ive)\b[^.!?]{0,32}?\b(?:free|avail(?:able)?|can'?t|cannot|cant|cmi|cbb|bo eng|busy|unavailable|no leave|leave|off|away|overseas?)\b/i;
+
 const EDIT_WORD =
   /\b(?:also|too|as well|add|another|what about|how about|consider|include|instead|rather than|change (?:it )?to|switch to|actually|make it|push (?:it )?to|move (?:it )?to|drop|remove|cross off|forget|scrap|is out|are out|no longer|not)\b/i;
 
@@ -58,6 +74,7 @@ export function parseTripEdit(
 ): TripEdit | null {
   const text = rawText.trim();
   if (!text || !EDIT_WORD.test(text)) return null;
+  if (ABOUT_THEMSELVES.test(text)) return null;
 
   const destination = parseDestinationEdit(text, today, currentDestinations);
   const duration = findDuration(text);

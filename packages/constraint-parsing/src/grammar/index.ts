@@ -8,3 +8,4 @@ export * from "./trip-edit.js";
 export * from "./participation.js";
 export * from "./notes.js";
 export * from "./reversal.js";
+export * from "./option-reference.js";

@@ -656,6 +656,62 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): a statement about yourself is never a change to the trip
+
+Founder asked how *"I'm not free 2 weeks in nov"* then *"the middle one"* are
+handled. Tracing both through the pipeline found one bug and one hole.
+
+**The bug.** `parseTripEdit` claimed the first message as a **horizon move to
+all of November**, `destructive: true`. From a non-organiser that raises a
+confirm button for a change nobody asked for; **from the organiser it applies
+silently** — one person's personal unavailability quietly reshaping the whole
+trip.
+
+The cause is an ordering assumption that does not hold. Trip edits are checked
+after availability, which is what keeps "can also do December" a personal
+statement. But that only protects messages availability *claims*. "2 weeks in
+Nov" is ambiguous about *which* two weeks, so the grammar correctly declines —
+and the message fell through to a parser where `not` is an edit word.
+
+Availability declining is not evidence the message was about the trip. So trip
+edits now decline outright on first-person availability language, however
+ambiguous the dates: `ABOUT_THEMSELVES`. "I think we should do Korea instead"
+still edits — the pronoun is not the tell, the availability vocabulary is.
+
+**The hole.** "The middle one" was dropped by the stage-1 gate as chatter, and
+nothing downstream understood positional reference anyway. The card offers
+buttons, but people answer a numbered list the way they answer a person.
+
+`parseOptionReference(text, optionCount)` handles the real phrasings — "the
+middle one", "the second one", "option 2", "no. 3", "#1", "2", "3 lah", "let's
+do the last one". Three choices worth recording:
+
+  * It takes the **count**, because "the middle one" is meaningless for an even
+    number of options — with four, either neighbour would be a guess about
+    somebody's dates, so it declines.
+  * Out-of-range numbers **decline rather than clamp**. "5" against three
+    options is a misread, and selecting the last would be a wrong answer
+    dressed as a right one.
+  * It runs **ahead of the privacy gate**, so the patterns are anchored and
+    narrow. A loose one here would become a way for ordinary conversation to be
+    read and stored, which is what "reads ≠ stores" exists to prevent.
+
+The shortlist is computed by one shared function rather than recomputed beside
+the renderer: the index someone means is the index they can *see*, and two
+implementations of "the shortlist" would eventually disagree about which window
+that is.
+
+Selection stays **organiser-only**, matching the buttons. Anyone may say "the
+middle one"; from a non-organiser it is relayed as a suggestion rather than
+silently ignored or silently applied.
+
+**Still open:** *"not free 2 weeks in Nov"* remains genuinely underspecified.
+It now declines safely instead of corrupting the trip, but the right answer is
+to ask *which* two weeks. Worth building once there is a clarify-and-answer
+pattern; the reversal flow's buttons are the obvious model.
+
+---
+
 ## Decision (2026-08-17): card density — one icon per section, one problem per warning
 
 Founder: mark the assumed duration, collapse the repeated conflict warning, and

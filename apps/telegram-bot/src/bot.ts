@@ -7,6 +7,7 @@ import {
   parseAvailabilityMessage,
   parseDurationRange,
   parseParticipantNote,
+  parseOptionReference,
   parseParticipationChange,
   parseReversal,
   parseTripEdit,
@@ -50,6 +51,7 @@ import {
   diagnoseParticipants,
   evaluateWindows,
   generateCandidateWindows,
+  type EvaluatedWindow,
   rankForDisplay,
   resolveReversal,
   type ReversibleFact,
@@ -951,6 +953,13 @@ export function createBot(token: string, deps: BotDeps): Bot {
     ctx: Context & { message: { text: string } },
   ): Promise<void> {
     const text = ctx.message.text;
+
+    // Choosing an option reads as ordinary chatter — "the middle one", "2" —
+    // so the stage-1 gate drops every phrasing of it. Matched here instead,
+    // ahead of the gate but only against the tight shapes in
+    // parseOptionReference, and only when a list is actually on screen.
+    if (await handleOptionReference(ctx, text)) return;
+
     // Stage 1: free deterministic gate. Failing messages are dropped here —
     // never logged, never stored ("reads ≠ stores").
     if (!mightContainConstraint(text)) return;
@@ -1193,6 +1202,97 @@ export function createBot(token: string, deps: BotDeps): Bot {
    * Called after every accepted constraint, so the group watches the picture
    * sharpen without the chat filling with repeated posts.
    */
+  /**
+   * "The middle one" — picking a window by its position in the list.
+   *
+   * Returns true when the message was a choice, so the caller stops. Selecting
+   * dates stays organiser-only, exactly as the buttons are: anyone may say
+   * "the middle one", and if they are not the organiser it is relayed as a
+   * suggestion rather than silently ignored or silently applied.
+   */
+  async function handleOptionReference(
+    ctx: Context & { message: { text: string } },
+    text: string,
+  ): Promise<boolean> {
+    // Cheap reject before any query: almost every message fails this.
+    if (!/^[\w'#. !]{1,28}$/.test(text.trim())) return false;
+
+    const trip = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat!.id),
+    );
+    if (!trip || trip.ambientPaused || trip.status === "DATE_SELECTED") {
+      return false;
+    }
+
+    const shortlist = await currentShortlist(trip);
+    const reference = parseOptionReference(text, shortlist.length);
+    if (!reference) return false;
+
+    const chosen = shortlist[reference.index]!;
+    const label = formatDateRange(chosen.window.start, chosen.window.end);
+
+    if (!(await isTripOrganiser(trip, ctx.from!))) {
+      await ctx.reply(`Noted — ${label}. ${await organiserName(trip)} confirms.`, {
+        reply_parameters: { message_id: ctx.msg!.message_id },
+      });
+      return true;
+    }
+
+    await selectTripDates(deps.db, trip.id, chosen.window.start, chosen.window.end);
+    void recordEvent(deps.db, {
+      event: "dates_selected",
+      tripId: trip.id,
+      chatId: String(ctx.chat!.id),
+      properties: { via: "text" },
+    });
+    const updated = await getTripById(deps.db, trip.id);
+    if (updated) await refreshTripCard(ctx, updated, { forceNew: true });
+    return true;
+  }
+
+  async function organiserName(trip: Trip): Promise<string> {
+    const participants = await loadTripPlanningState(deps.db, trip.id);
+    return participants.find((p) => p.isOrganiser)?.displayName ?? "The organiser";
+  }
+
+  /**
+   * The options currently on the card, in the order they are numbered.
+   *
+   * Shared with the card renderer rather than recomputed alongside it: when
+   * someone says "the middle one", the index they mean is the index they can
+   * see, and two implementations of "the shortlist" would eventually disagree
+   * about which window that is.
+   */
+  async function currentShortlist(trip: Trip): Promise<EvaluatedWindow[]> {
+    if (
+      trip.horizonStart === null ||
+      trip.horizonEnd === null ||
+      trip.durationMinDays === null ||
+      trip.durationMaxDays === null
+    ) {
+      return [];
+    }
+    const participants = await loadTripPlanningState(deps.db, trip.id);
+    const engineParticipants = participants
+      .filter((p) => !p.optedOut)
+      .map((p) => ({
+        id: p.participantId,
+        declarations: p.declarations,
+        maxLeaveDays: p.maxLeaveDays ?? undefined,
+      }));
+    const windows = generateCandidateWindows({
+      horizonStart: trip.horizonStart,
+      horizonEnd: trip.horizonEnd,
+      durationMinDays: trip.durationMinDays,
+      durationMaxDays: trip.durationMaxDays,
+    });
+    const ranked = rankForDisplay(
+      evaluateWindows(windows, engineParticipants, SG_PUBLIC_HOLIDAYS),
+    );
+    return selectDiverseWindows(ranked.feasible, trip.shortlistSize ?? 5);
+  }
+
   async function refreshTripCard(
     ctx: Context,
     trip: Trip,
