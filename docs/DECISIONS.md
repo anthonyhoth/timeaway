@@ -656,6 +656,68 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): proposals, as conversation analysis describes them
+
+Founder: *"'Korea is fine too' should add Korea. Add these deterministic rules
+of colloquial conversational language… minimise the LLM breaker call."*
+
+The parsers required an *edit* word — "instead", "make it", "push to" — which
+is how you write a command, not how anyone talks. Group planning is
+proposal-and-assessment, and that has enough documented structure to encode
+directly rather than guess at:
+
+  * **Proposals** take a small set of formats differing in how strongly they
+    claim the right to decide (Stevanovic & Peräkylä on deontic authority; Curl
+    & Drew on modal vs interrogative forms): imperative-inclusive *"let's X"*,
+    interrogative *"how about X / shall we X / why not X"*, and the weakest and
+    commonest, declarative-modal *"we could X / maybe X"*.
+  * **Assessments** follow the referent, and agreement is the preferred,
+    minimal, unmarked response (Pomerantz): *"X is fine"*, *"X sounds good"*,
+    *"X works"*, or in Singapore English simply *"X can"*.
+  * **Additive discourse markers** — too, also, as well, plus (Schiffrin) —
+    mark the referent as *joining* what is on the table. That is precisely the
+    difference between "Korea is fine too" and "Korea instead".
+  * **Singapore English particles** carry what intonation carries in speech
+    (Gupta): *leh* and *hor* solicit agreement, *meh* marks scepticism, *lah*
+    asserts; and "can" stands alone as a predicate (Wee), so *"Korea can?"* is
+    a complete proposal.
+
+The same grammar reads dates, because dates are proposed identically: *"how
+about December"*, *"December can?"*, *"year end works"*, *"nov leh"*.
+
+**Every proposal is an ADD.** A suggestion joins the list; only an explicit
+contrastive marker clears it. That is also the safest reading, since it
+discards nobody's earlier suggestion and needs no organiser approval.
+
+**The hard part was not recognising more, it was not over-claiming.** Most
+proposal frames govern a *verb phrase*, not a noun: "let's" introduces a place
+in "let's do Batam" and an evening plan in "let's eat later" — which briefly
+became a trip to **Eat Later**. So the residue is always vetted, and vouched
+for by one of three signals: a name in a small gazetteer, a locative
+preposition ("go **to** Sekinchan"), or a deliberate capital mid-sentence.
+Unknown places still work; the gazetteer disambiguates rather than gates.
+
+Two supporting fixes: the scaffolding is now **stripped** before extraction
+rather than filtered afterwards — "Korea is fine too" leaves "Korea", not
+"Korea Fine" — which is exact by construction, unlike the filler list that has
+leaked five times. And the bare "not" in the remove vocabulary was swallowing
+*"why not Vietnam"*, *"hainan not bad"* and *"Bali or not"*, all of them
+positive.
+
+**The gate now shares the grammar's vocabulary rather than restating it.** The
+first sweep found 39 phrasings parsed correctly and **18 of them discarded by
+the prefilter** — a fourth instance of the same drift. `prefilter.ts` imports
+the frames directly, so a phrasing the grammar learns passes the gate
+automatically. The gate is looser as a result ("the food there damn shiok" now
+passes), which is the documented bias: a false positive costs one cheap parse
+that declines; a false negative loses a constraint in silence.
+
+A 53-phrase corpus asserts both halves together — that each phrasing arrives
+*and* parses, and that fourteen near-misses claim nothing. Current state:
+**0 missed, 0 over-claimed.**
+
+---
+
 ## Decision (2026-08-17): the gate's contract, made executable
 
 Founder: *"'we want to go Hainan this year end' shouldn't need an LLM breaker

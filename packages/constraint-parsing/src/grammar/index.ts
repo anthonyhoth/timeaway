@@ -11,3 +11,4 @@ export * from "./reversal.js";
 export * from "./option-reference.js";
 export * from "./underspecified.js";
 export * from "./multi-span.js";
+export * from "./proposals.js";

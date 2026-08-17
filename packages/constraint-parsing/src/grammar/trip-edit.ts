@@ -1,7 +1,7 @@
 import type { ISODate } from "@timeaway/shared";
 import type { DestinationEdit } from "./destination.js";
 import { parseDestinationEdit } from "./destination.js";
-import { parseTripRequest } from "./trip-request.js";
+import { readProposal } from "./proposals.js";
 import { resolveHorizon } from "./horizon.js";
 import type { DateRange } from "./periods.js";
 
@@ -98,24 +98,25 @@ export function parseTripEdit(
   const text = rawText.trim();
   if (ABOUT_THEMSELVES.test(text)) return null;
 
+  // Dates get proposed exactly the way destinations do — "how about December",
+  // "December can?", "year end works", "why not next June" — so the same
+  // proposal grammar decides whether the trip's shape is being discussed.
+  const proposal = readProposal(text);
   const stated =
     EDIT_WORD.test(text) ||
     GROUP_PLAN.test(text) ||
+    proposal.proposes ||
     (options.horizonUnset === true && resolveHorizon(text, today) !== null);
   if (!stated) return null;
 
-  const planning = GROUP_PLAN.test(text);
+  const planning = GROUP_PLAN.test(text) || readProposal(text).proposes;
 
-  let destination = parseDestinationEdit(text, today, currentDestinations);
+  const destination = parseDestinationEdit(text, today, currentDestinations);
 
-  // "We want to go Hainan this year end" names a place with no edit word, so
-  // the op detector finds nothing. Planning aloud with no destination yet is
-  // an ADD, not a rewrite — the weakest claim that fits, so it needs no
-  // organiser approval and cannot silently discard an existing choice.
-  if (!destination && planning && currentDestinations.length === 0) {
-    const named = parseTripRequest(text, today).destinations;
-    if (named.length > 0) destination = { op: "ADD", destinations: named };
-  }
+  // A fallback used to sit here, reading any leftover words as a place when a
+  // planning phrase was present. parseDestinationEdit now recognises proposals
+  // itself *and* vets the name, so the fallback only survived to turn "ok lah"
+  // into a trip to Ok Lah — it bypassed the very check that makes this safe.
 
   const duration = findDuration(text);
 

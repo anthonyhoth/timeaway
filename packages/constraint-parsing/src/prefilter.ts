@@ -14,6 +14,13 @@
  * prefilter.test.ts now asserts the contract directly against the parsers.
  */
 
+import {
+  ADDITIVE_MARKER,
+  ASSESSMENT_FRAME,
+  PROPOSAL_FRAME,
+  PROPOSAL_TAG,
+} from "./grammar/proposals.js";
+
 const MONTHS =
   "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
 
@@ -42,6 +49,15 @@ const PATTERNS: RegExp[] = [
   // here the message was discarded before it ever reached that parser.
   /\b(?:year|years|yr|eoy)\b/i,
   /\b(?:let'?s|lets|plan|planning|thinking|aiming|hoping|looking|wanna|want)\b/i,
+  // Shared with the grammar rather than restated here. Every phrasing the
+  // proposal parser learns passes the gate automatically, which is the only
+  // way this stops drifting: the gate has now silently swallowed a working
+  // parser four times, and each time the cause was two lists of words that
+  // were supposed to agree.
+  PROPOSAL_FRAME,
+  ASSESSMENT_FRAME,
+  ADDITIVE_MARKER,
+  PROPOSAL_TAG,
   // Joining or sitting the trip out. Found by the contract test below: the
   // participation parser has always read "count me out", and the gate has
   // always thrown it away first.

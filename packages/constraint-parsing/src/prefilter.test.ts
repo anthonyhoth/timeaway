@@ -60,8 +60,27 @@ describe("Singaporean leave and NS shorthand reaches the grammar", () => {
     expect(mightContainConstraint("mob manning")).toBe(true);
   });
 
-  it("still drops ordinary chatter", () => {
-    expect(mightContainConstraint("the food there damn shiok")).toBe(false);
+  it("drops chatter that shares no vocabulary with any parser", () => {
+    expect(mightContainConstraint("see you later")).toBe(false);
+    expect(mightContainConstraint("who's paying")).toBe(false);
+  });
+
+  /**
+   * The gate got looser when it started sharing the proposal grammar's
+   * vocabulary — "the food there damn shiok" contains an assessment word and
+   * now passes. That is the documented bias working: a false positive costs
+   * one cheap parse that declines, a false negative loses a constraint in
+   * silence. The guarantee that matters is downstream.
+   */
+  it("lets chatter through cheaply, and no parser claims it", () => {
+    const when = { today: "2026-08-17" as const, horizonStart: null, horizonEnd: null, destination: null };
+    for (const text of ["the food there damn shiok", "that movie was steady"]) {
+      expect(parseAvailabilityMessage(text, when), text).toBeNull();
+      expect(
+        parseTripEdit(text, "2026-08-17", [], { horizonUnset: true }),
+        text,
+      ).toBeNull();
+    }
   });
 });
 

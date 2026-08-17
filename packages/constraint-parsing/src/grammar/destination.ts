@@ -1,4 +1,9 @@
 import type { ISODate } from "@timeaway/shared";
+import {
+  namesLikelyPlace,
+  readProposal,
+  stripProposalLanguage,
+} from "./proposals.js";
 import { parseTripRequest } from "./trip-request.js";
 
 /**
@@ -36,7 +41,18 @@ function detectOp(text: string): DestinationEditOp | null {
   // an add-ish and a replace-ish word, and replace is the stronger claim.
   if (REPLACE_WORDS.test(text)) return "REPLACE";
   if (ADD_WORDS.test(text)) return "ADD";
-  if (REMOVE_WORDS.test(text)) return "REMOVE";
+  // The bare "not" in REMOVE_WORDS also sits inside two common *positive*
+  // constructions — "why not Vietnam" proposes it, "hainan not bad" praises it
+  // — and both were being read as removals, then silently dropped for naming a
+  // place that was not on the list.
+  const notIsPositive = /\bwhy\s+not\b|\bnot\s+bad\b|\bor\s+not\b/i.test(text);
+  if (REMOVE_WORDS.test(text) && !notIsPositive) return "REMOVE";
+
+  // Nobody talks in edit words. "Korea is fine too", "how about Taiwan",
+  // "Bali can?" are how a destination actually gets suggested, and all of them
+  // are additions: a proposal joins what is on the table, it does not clear it.
+  // Adding is also the safest reading, since it discards nobody's suggestion.
+  if (readProposal(text).proposes) return "ADD";
   return null;
 }
 
@@ -56,9 +72,27 @@ export function parseDestinationEdit(
 
   // parseTripRequest consumes dates and durations, so whatever survives is a
   // candidate place — which is exactly what "in June instead" must not leave.
-  const request = parseTripRequest(text, today);
-  const named = request.destinations;
+  // Strip the scaffolding we have already recognised, so what reaches the
+  // extractor is the referent alone.
+  const request = parseTripRequest(stripProposalLanguage(text), today);
+  let named = request.destinations;
   if (named.length === 0) return null;
+
+  // A proposal *frame* ("how about X", "let's do X") governs a noun, so the
+  // residue is a place by grammar and needs no vetting — which is what keeps
+  // unknown places working. A bare assessment ("X is fine too") constrains its
+  // subject not at all, so there the name has to be plausible: otherwise "the
+  // weather is fine too" books a trip to Weather.
+  // Every proposal is vetted, because most frames govern a *verb phrase* rather
+  // than a noun: "let's" introduces a place in "let's do Batam" and a plan for
+  // the evening in "let's eat later", which was becoming a trip to Eat Later.
+  // Only an explicit replace or remove skips the check, and those must already
+  // name a destination the trip has.
+  const needsVetting = !REPLACE_WORDS.test(text) && !REMOVE_WORDS.test(text);
+  if (needsVetting) {
+    named = named.filter((name) => namesLikelyPlace(name, rawText));
+    if (named.length === 0) return null;
+  }
 
   if (op === "ADD") {
     const fresh = named.filter(

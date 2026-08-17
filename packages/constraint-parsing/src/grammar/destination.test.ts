@@ -58,8 +58,18 @@ describe("parseDestinationEdit — declining", () => {
     expect(parse("only got 2 days AL")).toBeNull();
   });
 
-  it("ignores plain chatter with no edit word", () => {
-    expect(parse("korea looks nice")).toBeNull();
+  it("now reads a positive assessment as a suggestion", () => {
+    // Superseded deliberately: "korea looks nice" is how a destination gets
+    // proposed, and treating it as chatter sent it to the LLM or nowhere.
+    expect(parse("korea looks nice")).toEqual({
+      op: "ADD",
+      destinations: ["Korea"],
+    });
+  });
+
+  it("still ignores chatter that only looks like one", () => {
+    expect(parse("let's eat later")).toBeNull();
+    expect(parse("the weather is fine too")).toBeNull();
   });
 });
 
