@@ -28,6 +28,13 @@ export interface CardInput {
   selected?: { start: string; end: string } | null;
 }
 
+/** Everyone still in the trip — opt-outs are not part of any count. */
+function travellers(
+  participants: readonly ParticipantPlanningState[],
+): ParticipantPlanningState[] {
+  return participants.filter((p) => !p.optedOut);
+}
+
 function nameOf(
   participants: readonly ParticipantPlanningState[],
   participantId: string,
@@ -67,7 +74,7 @@ function participantLines(
 
   if (includeCounts && window.counts.available > 0) {
     lines.push(
-      `✅ ${window.counts.available} of ${participants.length} can make it`,
+      `✅ ${window.counts.available} of ${travellers(participants).length} can make it`,
     );
   }
 
@@ -254,7 +261,7 @@ export function renderTripCard(input: CardInput): string {
         const pending = w.counts.rosterPending > 0 ? ` · ${w.counts.rosterPending} roster pending` : "";
         lines.push(
           `${index + 1}. ${formatDateRange(w.window.start, w.window.end)} · ${w.window.days} days`,
-          `    ✅ ${w.counts.available} of ${input.participants.length} in · ${w.leaveDays} leave${pending}`,
+          `    ✅ ${w.counts.available} of ${travellers(input.participants).length} in · ${w.leaveDays} leave${pending}`,
         );
       });
       const attention = attentionLines(options[0]!, input.participants);
@@ -280,6 +287,14 @@ export function renderTripCard(input: CardInput): string {
       ...participantLines(best, input.participants),
       "",
       "Shift a date or go without someone — your call.",
+    );
+  }
+
+  const sittingOut = input.participants.filter((p) => p.optedOut);
+  if (sittingOut.length > 0) {
+    lines.push(
+      "",
+      `🙅 ${joinNames(sittingOut.map((p) => p.displayName))} sitting this one out`,
     );
   }
 

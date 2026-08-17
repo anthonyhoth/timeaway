@@ -81,11 +81,14 @@ export function createWebApp(deps: WebDeps): Hono {
       view.durationMinDays !== null &&
       view.durationMaxDays !== null;
 
-    const engineParticipants = view.participants.map((p, index) => ({
+    // Opt-outs constrain nothing, exactly as in the bot.
+    const engineParticipants = view.participants
+      .filter((p) => !p.optedOut)
+      .map((p, index) => ({
       id: String(index),
       declarations: p.declarations,
       maxLeaveDays: p.maxLeaveDays ?? undefined,
-    }));
+      }));
 
     const windows = canCompute
       ? generateCandidateWindows({

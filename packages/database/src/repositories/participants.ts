@@ -105,6 +105,18 @@ export async function setLeaveCap(
     .where(eq(participants.id, participantId));
 }
 
+/** Withdraw from, or rejoin, the trip. */
+export async function setParticipantOptedOut(
+  db: Db,
+  participantId: string,
+  optedOut: boolean,
+): Promise<void> {
+  await db
+    .update(participants)
+    .set({ optedOut })
+    .where(eq(participants.id, participantId));
+}
+
 export async function listParticipants(
   db: Db,
   tripId: string,

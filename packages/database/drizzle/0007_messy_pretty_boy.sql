@@ -1,0 +1,1 @@
+ALTER TABLE "participants" ADD COLUMN "opted_out" boolean DEFAULT false NOT NULL;

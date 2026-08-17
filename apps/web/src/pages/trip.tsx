@@ -25,7 +25,8 @@ function statusLines(
   window: EvaluatedWindow,
   view: PublicTripView,
 ): StatusLine[] {
-  const nameOf = (index: number) => view.participants[index]?.firstName ?? "Someone";
+  const travelling = view.participants.filter((p) => !p.optedOut);
+  const nameOf = (index: number) => travelling[index]?.firstName ?? "Someone";
   const lines: StatusLine[] = [];
 
   window.participants.forEach((p, index) => {
@@ -102,8 +103,10 @@ export function TripPage({
   const best = hasAnyDates
     ? (ranked.feasible[0] ?? ranked.nearMisses[0])
     : undefined;
+  // Engine ids are positions in the *travelling* list, not the full one.
+  const travelling = view.participants.filter((p) => !p.optedOut);
   const nameOfIndex = (id: string) =>
-    view.participants[Number(id)]?.firstName ?? "Someone";
+    travelling[Number(id)]?.firstName ?? "Someone";
 
   return (
     <Layout

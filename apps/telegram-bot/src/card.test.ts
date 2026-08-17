@@ -13,10 +13,12 @@ const person = (
   displayName: string,
   declarations: ParticipantPlanningState["declarations"] = [],
   maxLeaveDays: number | null = null,
+  optedOut = false,
 ): ParticipantPlanningState => ({
   participantId: id,
   displayName,
   isOrganiser: id === "p1",
+  optedOut,
   maxLeaveDays,
   declarations,
 });
@@ -160,5 +162,33 @@ describe("renderTripCard", () => {
     expect(card).toContain("🎉 Dates confirmed");
     expect(card).toContain("7–10 Nov 2026");
     expect(card).not.toContain("Best match so far");
+  });
+});
+
+describe("opting out", () => {
+  it("names anyone sitting the trip out", () => {
+    const card = renderTripCard(
+      build([
+        person("p1", "Anthony", [
+          { state: "AVAILABLE", start: "2026-11-02", end: "2026-11-20" },
+        ]),
+        person("p2", "Dan", [], null, true),
+      ]),
+    );
+    expect(card).toContain("Dan sitting this one out");
+  });
+
+  it("leaves them out of the counts entirely", () => {
+    // Two people, one sitting out — the available count is out of one.
+    const card = renderTripCard(
+      build([
+        person("p1", "Anthony", [
+          { state: "AVAILABLE", start: "2026-11-02", end: "2026-11-20" },
+        ]),
+        person("p2", "Dan", [], null, true),
+      ]),
+    );
+    expect(card).toMatch(/of 1 in/);
+    expect(card).not.toMatch(/of 2 in/);
   });
 });

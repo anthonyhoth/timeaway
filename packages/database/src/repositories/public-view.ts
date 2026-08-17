@@ -13,6 +13,7 @@ import { loadTripPlanningState } from "./planning.js";
 export interface PublicParticipant {
   firstName: string;
   isOrganiser: boolean;
+  optedOut: boolean;
   maxLeaveDays: number | null;
   declarations: {
     state: "AVAILABLE" | "MAYBE" | "UNAVAILABLE" | "UNKNOWN";
@@ -66,6 +67,7 @@ export async function loadPublicTripView(
     participants: participants.map((p) => ({
       firstName: firstNameOf(p.displayName),
       isOrganiser: p.isOrganiser,
+      optedOut: p.optedOut,
       maxLeaveDays: p.maxLeaveDays,
       declarations: p.declarations,
     })),

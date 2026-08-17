@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   integer,
   pgEnum,
@@ -35,6 +36,10 @@ export const participants = pgTable(
     role: participantRole("role").notNull().default("PARTICIPANT"),
     // "Max 2 days leave" — a hard cap the engine treats as a constraint
     // (brief section 10). Source text preserved per the auditability rule.
+    // Sat this one out. Not everyone in a group chat is travelling, and
+    // someone who has already spoken needs a way to withdraw without their
+    // silence being read as a constraint.
+    optedOut: boolean("opted_out").notNull().default(false),
     maxLeaveDays: integer("max_leave_days"),
     maxLeaveDaysSourceText: text("max_leave_days_source_text"),
     createdAt: timestamp("created_at", { withTimezone: true })

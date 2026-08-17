@@ -583,6 +583,24 @@ Two subtleties in that fix worth keeping:
 
 ---
 
+## Decision (2026-08-17, founder-directed): members can opt out; a shortlist still shows while others are silent
+
+The founder confirmed the bot should keep showing a shortlist while some members are silent, and asked for an explicit opt-out — because **not everyone in a group chat is travelling**, and judging readiness by a response threshold would misread that.
+
+**Silence was already handled better than assumed.** Participants are only created when someone speaks, so a group member who never engages never becomes part of the trip and never appears in a count. The real gap was different: someone who *has* spoken had no way to withdraw, and would sit in the trip forever diluting the counts or constraining windows.
+
+**Decision: `participants.opted_out`, set from conversation.** "Count me out", "not joining this one", "sitting this one out", "you guys go ahead" withdraw; "count me in", "actually I'm in" rejoin. Opting out is self-service — nobody needs the organiser's permission not to travel.
+
+**The distinction that makes it safe: a date reference.** "Count me out **for November**" is a date constraint; "count me out" is leaving the trip. Availability is parsed first and anything naming a period is excluded from participation parsing, so the two cannot be confused.
+
+**Opt-outs constrain nothing.** They are removed before the engine sees the participants, so their dates never narrow a window, and they are excluded from every count — "3 of 4 in", not "3 of 5". They stay visible on the card as "🙅 Dan sitting this one out", so the group can see the decision rather than watch someone silently vanish. The web page applies the same filter.
+
+**Subtle bug avoided:** engine participant ids are positions in the *travelling* list, so the web page's name lookup had to filter identically or it would have printed the wrong person's name against a status.
+
+**Threshold logic remains deliberately absent.** Per brief §10 and this decision, the bot never waits for a quorum before showing options; it names who has not answered and lets the group judge.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

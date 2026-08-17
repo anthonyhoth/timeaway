@@ -6,6 +6,7 @@ import {
   mightContainConstraint,
   parseAvailabilityMessage,
   parseDurationRange,
+  parseParticipationChange,
   parseTripEdit,
   parseTripRequest,
   resolveHorizon,
@@ -26,6 +27,7 @@ import {
   setCardMessageId,
   setDestinationCandidates,
   setLeaveCap,
+  setParticipantOptedOut,
   setTripShape,
   setShortlistSize,
   setTripChatId,
@@ -577,6 +579,34 @@ export function createBot(token: string, deps: BotDeps): Bot {
     // Stage 2: deterministic grammar handles the common phrasings for free.
     // The LLM is consulted only for what the grammar declines to claim
     // (founder-decided, docs/DECISIONS.md).
+    // Leaving or rejoining the trip itself. Checked after availability so
+    // "count me out for November" remains a date constraint, not a
+    // withdrawal.
+    if (!parseAvailabilityMessage(text, extractionCtx)) {
+      const change = parseParticipationChange(text);
+      if (change) {
+        const participant = await ensureParticipantForTelegramUser(
+          deps.db,
+          trip.id,
+          {
+            telegramUserId: String(ctx.from!.id),
+            displayName: [ctx.from!.first_name, ctx.from!.last_name]
+              .filter(Boolean)
+              .join(" "),
+          },
+        );
+        await setParticipantOptedOut(deps.db, participant.id, change === "OUT");
+        try {
+          await ctx.react("✍");
+        } catch (error) {
+          console.error("reaction failed", error);
+        }
+        const afterChange = await getTripById(deps.db, trip.id);
+        if (afterChange) await refreshTripCard(ctx, afterChange);
+        return;
+      }
+    }
+
     // Someone steering the trip itself — "Korea too", "push to December",
     // "make it 5 days". Checked after availability, so a message about a
     // person's own dates is never mistaken for a change to the plan.
@@ -681,7 +711,10 @@ export function createBot(token: string, deps: BotDeps): Bot {
       trip.durationMinDays !== null &&
       trip.durationMaxDays !== null;
 
-    const engineParticipants = participants.map((p) => ({
+    // Someone sitting the trip out constrains nothing — their dates must not
+    // narrow the options, nor dilute the counts.
+    const travelling = participants.filter((p) => !p.optedOut);
+    const engineParticipants = travelling.map((p) => ({
       id: p.participantId,
       declarations: p.declarations,
       maxLeaveDays: p.maxLeaveDays ?? undefined,

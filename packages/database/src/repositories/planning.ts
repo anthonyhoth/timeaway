@@ -12,6 +12,8 @@ export interface ParticipantPlanningState {
   participantId: string;
   displayName: string;
   isOrganiser: boolean;
+  /** Sitting this trip out — excluded from feasibility and from the counts. */
+  optedOut: boolean;
   maxLeaveDays: number | null;
   /** Oldest first — the engine's latest-declaration-wins rule depends on it. */
   declarations: {
@@ -35,6 +37,7 @@ export async function loadTripPlanningState(
       participantId: participants.id,
       inviteName: participants.inviteName,
       role: participants.role,
+      optedOut: participants.optedOut,
       maxLeaveDays: participants.maxLeaveDays,
       userName: users.displayName,
     })
@@ -72,6 +75,7 @@ export async function loadTripPlanningState(
     participantId: row.participantId,
     displayName: row.userName ?? row.inviteName ?? "Someone",
     isOrganiser: row.role === "ORGANISER",
+    optedOut: row.optedOut,
     maxLeaveDays: row.maxLeaveDays,
     declarations: byParticipant.get(row.participantId) ?? [],
   }));
