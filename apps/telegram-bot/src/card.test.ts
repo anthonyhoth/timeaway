@@ -58,7 +58,7 @@ describe("renderTripCard", () => {
       build([person("p1", "Anthony"), person("p2", "Mei")]),
     );
     expect(card).not.toContain("Best match so far");
-    expect(card).toContain("I'm listening in this chat now");
+    expect(card).toContain("Listening here");
   });
 
   it("lists each person's noted constraints on their own line", () => {
@@ -79,7 +79,7 @@ describe("renderTripCard", () => {
       participants: [],
       tripUrl: "https://timeaway.sg/t/abc123",
     });
-    expect(card).toContain("I'm listening in this chat now");
+    expect(card).toContain("Listening here");
     expect(card).toContain("Destination open");
   });
 
@@ -95,8 +95,8 @@ describe("renderTripCard", () => {
       ]),
     );
     expect(card).toMatch(/\d windows work so far/);
-    expect(card).toMatch(/1\. .+ · \dd · \d\/\d/);
-    expect(card).toMatch(/· \d\/\d · \d+ leave/);
+    expect(card).toMatch(/1\. \w{3} \d+ – \w{3} \d+/);
+    expect(card).toMatch(/\d of \d free|\d of \d\b/);
     expect(card).toContain("https://timeaway.sg/t/abc123");
   });
 
@@ -166,7 +166,7 @@ describe("renderTripCard", () => {
       selected: { start: "2026-11-07", end: "2026-11-10" },
     });
     expect(card).toContain("🎉 Dates confirmed");
-    expect(card).toContain("7–10 Nov 2026");
+    expect(card).toContain("Sat 7 – Tue 10 Nov 2026");
     expect(card).not.toContain("Best match so far");
   });
 });
@@ -194,7 +194,7 @@ describe("opting out", () => {
         person("p2", "Dan", [], null, true),
       ]),
     );
-    expect(card).toMatch(/\/1 · /);
+    expect(card).toMatch(/of 1 free|of 1\b/);
     expect(card).not.toMatch(/of 2 in/);
   });
 });
@@ -385,5 +385,118 @@ describe("why someone's dates are unknown", () => {
 
   it("is honest when the words give no reason", () => {
     expect(withReason("not sure yet")).toContain("dates not confirmed");
+  });
+});
+
+/**
+ * User feedback: the suggested dates were hard to read.
+ *
+ * Two causes. The rows repeated whatever every option had in common, so the
+ * reader scanned three identical stat strings to find the one thing that
+ * differed — the dates. And the dates themselves were bare numbers, when the
+ * first thing anyone wants from a trip window is whether it is a long weekend.
+ */
+describe("readable options", () => {
+  const win = (start: string, end: string, days: number, leave: number) => ({
+    window: { start, end, days },
+    leaveDays: leave,
+    counts: {
+      available: 1,
+      maybe: 0,
+      unavailable: 0,
+      unknown: 0,
+      unanswered: 0,
+      rosterPending: 0,
+    },
+    participants: [],
+    feasible: true,
+  });
+  const withShortlist = (shortlist: ReturnType<typeof win>[]) => ({
+    ...build([
+      person("p1", "Anthony", [
+        { state: "AVAILABLE" as const, start: "2026-11-02", end: "2026-11-20" },
+      ]),
+    ]),
+    ranked: { feasible: shortlist as never, nearMisses: [] },
+    shortlist: shortlist as never,
+    shortlistSize: 5,
+  });
+
+  it("names the days of the week", () => {
+    // "9–13 Dec" hides that it is Wednesday to Sunday, which is the whole
+    // question when you are deciding whether a window is worth the leave.
+    const card = renderTripCard(
+      withShortlist([win("2026-12-09", "2026-12-13", 5, 3)]),
+    );
+    expect(card).toContain("Wed 9 – Sun 13 Dec");
+  });
+
+  it("states what every option shares once, above them", () => {
+    const card = renderTripCard(
+      withShortlist([
+        win("2026-12-09", "2026-12-13", 5, 3),
+        win("2026-12-17", "2026-12-21", 5, 3),
+      ]),
+    );
+    expect(card).toContain("All 5 days");
+    // …and then not again on the rows, which carry dates alone.
+    const rows = card.split("\n").filter((line) => /^\d+\. /.test(line));
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row).not.toMatch(/days|leave|of \d/);
+  });
+
+  it("keeps on the row only what actually differs", () => {
+    const card = renderTripCard(
+      withShortlist([
+        win("2026-12-09", "2026-12-13", 5, 3),
+        win("2026-12-26", "2026-12-28", 3, 1),
+      ]),
+    );
+    expect(card).toContain("3 days");
+    expect(card).toContain("5 days");
+    expect(card).not.toContain("All 5 days");
+  });
+});
+
+/**
+ * Founder feedback: the worked examples repeated on every card. They are
+ * onboarding — useful exactly once, which is what the join message is for —
+ * and a status card should say what is happening and what is still needed.
+ */
+describe("the invitation card is status, not a tutorial", () => {
+  const waiting = () =>
+    renderTripCard({
+      ...build([person("p1", "Anthony"), person("p2", "Farah")]),
+      horizonStart: null,
+      horizonEnd: null,
+    });
+
+  it("still says it is listening", () => {
+    expect(waiting()).toContain("Listening here");
+  });
+
+  it("drops the worked examples", () => {
+    const card = waiting();
+    expect(card).not.toContain("cmi October");
+    expect(card).not.toContain("long weekend");
+    expect(card).not.toContain("Just talk about dates");
+  });
+
+  it("names who it is waiting on instead", () => {
+    // More useful than examples, and it is the thing that moves the trip on.
+    expect(waiting()).toContain("Waiting on Anthony and Farah");
+  });
+
+  it("keeps the commands and the link", () => {
+    const card = waiting();
+    expect(card).toContain("/dates");
+    expect(card).toContain("/pause");
+    expect(card).toContain("https://timeaway.sg/t/");
+  });
+
+  it("puts each decision on its own line", () => {
+    const card = waiting();
+    expect(card.split("\n")[0]).toBe("Japan");
+    expect(card.split("\n")[1]).toMatch(/days/);
   });
 });

@@ -7,6 +7,7 @@ import type {
 } from "@timeaway/trip-engine";
 import {
   formatDateRange,
+  formatTripDates,
   formatDestinations,
   formatDuration,
 } from "@timeaway/shared";
@@ -257,6 +258,56 @@ function diagnosticLines(input: CardInput): string[] {
   return lines;
 }
 
+/**
+ * What every option in the shortlist has in common, as one line.
+ *
+ * The engine spreads options across the horizon, so they routinely share a
+ * length and a leave cost — and repeating those on every row is the noise a
+ * reader has to see past to find the dates.
+ */
+function sharedFacts(
+  options: readonly EvaluatedWindow[],
+  travellerCount: number,
+): string | null {
+  const same = <T>(pick: (w: EvaluatedWindow) => T) =>
+    options.every((w) => pick(w) === pick(options[0]!)) ? pick(options[0]!) : null;
+
+  const days = same((w) => w.window.days);
+  const leave = same((w) => w.leaveDays);
+  const available = same((w) => w.counts.available);
+
+  const facts: string[] = [];
+  if (days !== null) facts.push(`${days} days`);
+  if (leave !== null) {
+    facts.push(`${leave} leave ${leave === 1 ? "day" : "days"}`);
+  }
+  if (available !== null) facts.push(`${available} of ${travellerCount} free`);
+  return facts.length > 0 ? `All ${facts.join(" · ")}` : null;
+}
+
+/** Only what this option does *not* share with the rest. */
+function varyingFacts(
+  window: EvaluatedWindow,
+  options: readonly EvaluatedWindow[],
+  travellerCount: number,
+): string {
+  const differs = <T>(pick: (w: EvaluatedWindow) => T) =>
+    options.some((w) => pick(w) !== pick(options[0]!));
+
+  const facts: string[] = [];
+  if (differs((w) => w.window.days)) facts.push(`${window.window.days} days`);
+  if (differs((w) => w.leaveDays)) {
+    facts.push(`${window.leaveDays} leave`);
+  }
+  if (differs((w) => w.counts.available)) {
+    facts.push(`${window.counts.available} of ${travellerCount}`);
+  }
+  if (window.counts.rosterPending > 0) {
+    facts.push(`${window.counts.rosterPending} pending`);
+  }
+  return facts.length > 0 ? ` · ${facts.join(" · ")}` : "";
+}
+
 /** Non-date input already captured, one bullet per person. */
 function notedLines(
   participants: readonly ParticipantPlanningState[],
@@ -271,18 +322,29 @@ function notedLines(
     );
 }
 
+/**
+ * One fact per line.
+ *
+ * "Japan · 5–7 days (default) · looking at Dec" packs three separate decisions
+ * into a single run of middots, and a reader has to parse the punctuation to
+ * find the one they care about. Stacked, each is answerable on its own.
+ */
 function header(input: CardInput): string[] {
   const lines = [formatDestinations(input.destinations)];
-  if (input.horizonDerived && input.horizonStart && input.horizonEnd) {
-    lines.push(
-      `Looking at ${formatDateRange(input.horizonStart, input.horizonEnd)} — from what you've said`,
-    );
-  }
+
   if (input.durationMinDays !== null && input.durationMaxDays !== null) {
     // Marked when we assumed it, so nobody mistakes our guess for the group's
     // decision — and so it reads as something they are invited to change.
     const assumed = input.durationDefaulted ? " (default)" : "";
-    lines[0] += ` · ${formatDuration(input.durationMinDays, input.durationMaxDays)}${assumed}`;
+    lines.push(
+      `${formatDuration(input.durationMinDays, input.durationMaxDays)}${assumed}`,
+    );
+  }
+  if (input.horizonStart && input.horizonEnd) {
+    const source = input.horizonDerived ? " — from what you've said" : "";
+    lines.push(
+      `${formatDateRange(input.horizonStart, input.horizonEnd)}${source}`,
+    );
   }
   return lines;
 }
@@ -300,7 +362,7 @@ export function renderTripCard(input: CardInput): string {
   if (input.selected) {
     lines.push(
       "🎉 Dates confirmed",
-      formatDateRange(input.selected.start, input.selected.end),
+      formatTripDates(input.selected.start, input.selected.end, { showYear: true }),
       "",
       input.tripUrl,
     );
@@ -315,16 +377,20 @@ export function renderTripCard(input: CardInput): string {
   const hasAnyDates = input.participants.some((p) => p.declarations.length > 0);
 
   if (!hasAnyDates || (feasible.length === 0 && nearMisses.length === 0)) {
-    lines.push(
-      "I'm listening in this chat now.",
-      "",
-      "Just talk about dates like you normally would — \u201ccmi October\u201d, " +
-        "\u201conly got 2 days AL\u201d, \u201croster not out yet\u201d — and I'll " +
-        "work out what fits.",
-      "",
-      "You can shape the trip the same way: \u201clet's do Japan\u201d, " +
-        "\u201cnext year\u201d, \u201cmake it a long weekend\u201d.",
-    );
+    // The worked examples used to live here and were repeated on every card.
+    // They are onboarding, not status: useful exactly once, which is where the
+    // join message already says them. What belongs on a card is what is
+    // happening and what is still needed.
+    lines.push("Listening here — say when you're free and I'll work it out.");
+
+    // Name who we are actually waiting on. More useful than a tutorial, and it
+    // is the thing that moves the trip along.
+    const waiting = travellers(input.participants)
+      .filter((p) => p.declarations.length === 0)
+      .map((p) => p.displayName);
+    if (waiting.length > 0) {
+      lines.push("", `Waiting on ${joinNames(waiting)}.`);
+    }
 
     // Acknowledge anything already heard that isn't a date, so the card never
     // looks like it ignored someone. One line per person: a comma-joined run
@@ -332,7 +398,7 @@ export function renderTripCard(input: CardInput): string {
     const notes = notedLines(input.participants);
     if (notes.length > 0) lines.push("", "Noted so far:", ...notes);
 
-    lines.push("", "/dates to see options · /pause to stop me reading", input.tripUrl);
+    lines.push("", "/dates · /calendar · /pause", input.tripUrl);
     return lines.join("\n");
   }
 
@@ -344,7 +410,7 @@ export function renderTripCard(input: CardInput): string {
       const only = options[0]!;
       lines.push(
         "One window works for everyone",
-        `${formatDateRange(only.window.start, only.window.end)} · ${only.window.days} days`,
+        `${formatTripDates(only.window.start, only.window.end)} · ${only.window.days} days`,
         "",
         ...participantLines(only, input.participants),
       );
@@ -355,14 +421,17 @@ export function renderTripCard(input: CardInput): string {
           : `${options.length} windows work so far`,
         "",
       );
+      // Whatever is the same on every row is stated once, above them. A
+      // shortlist where each line reads "5d · 2/4 · 3 leave" makes the reader
+      // scan three times to learn nothing — the dates are the only thing that
+      // actually differs, so the dates are all that is left on the row.
+      const shared = sharedFacts(options, travellers(input.participants).length);
+      if (shared) lines.push(shared, "");
+
       options.forEach((w, index) => {
-        const pending =
-          w.counts.rosterPending > 0 ? ` · ${w.counts.rosterPending} pending` : "";
         lines.push(
-          `${index + 1}. ${formatDateRange(w.window.start, w.window.end)} · ` +
-            `${w.window.days}d · ` +
-            `${w.counts.available}/${travellers(input.participants).length} · ` +
-            `${w.leaveDays} leave${pending}`,
+          `${index + 1}. ${formatTripDates(w.window.start, w.window.end)}` +
+            varyingFacts(w, options, travellers(input.participants).length),
         );
       });
       const attention = attentionLines(options[0]!, input.participants);
@@ -384,7 +453,7 @@ export function renderTripCard(input: CardInput): string {
     lines.push(
       "No window works for everyone yet.",
       "",
-      `Closest: ${formatDateRange(best.window.start, best.window.end)} · ${best.window.days} days`,
+      `Closest: ${formatTripDates(best.window.start, best.window.end)} · ${best.window.days} days`,
       ...participantLines(best, input.participants),
       "",
       "Shift a date or go without someone — your call.",
