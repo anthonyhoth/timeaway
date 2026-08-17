@@ -58,6 +58,17 @@ const RESTRICTIVE = /\b(?:only|nothing but|just)\b/i;
 const KNOWS_LATER =
   /\b(?:out|release[ds]?|released|confirm(?:ed)?|know|fixed|available)\b[^.]{0,20}\b(?:next|by|after|in|on)\b/i;
 
+/**
+ * Open-ended availability — "free whenever", "anytime works".
+ *
+ * Note the collision with the wizard: answering "whenever" to *"how many
+ * days?"* means "I don't know", but saying "free whenever" in chat means the
+ * opposite — fully available. The two live in different code paths for
+ * exactly this reason; this one only ever sees ambient conversation.
+ */
+const OPEN_ENDED =
+  /\b(?:when ?ever|any ?time|any day|any dates?|all dates?|all good|flexible|no preference|dun ?mind|don'?t mind|up to (?:you|u|yall|the group))\b/i;
+
 /** Obligations that read as hard unavailability in this segment. */
 const BLOCKING_COMMITMENT =
   /\b(?:reservist|ict|in ?camp|ns\b|exam(?:s)?|wedding|work trip|bto|attachment)\b/i;
@@ -147,6 +158,27 @@ export function parseAvailabilityMessage(
     ctx.horizonStart,
     ctx.horizonEnd,
   );
+
+  // "Free whenever" names no date but says a great deal: available across the
+  // whole trip window.
+  // "Anytime works" carries no separate positive word — the open-ended phrase
+  // is itself the affirmation. Negation or uncertainty still veto it.
+  if (
+    !dateRef &&
+    OPEN_ENDED.test(text) &&
+    !NEGATIVE.test(text) &&
+    !UNKNOWN.test(text)
+  ) {
+    if (!ctx.horizonStart || !ctx.horizonEnd) return null;
+    return {
+      relevant: true,
+      subjectName: null,
+      declarations: [
+        { state: "AVAILABLE", start: ctx.horizonStart, end: ctx.horizonEnd },
+      ],
+      maxLeaveDays: leaveCap,
+    };
+  }
 
   // A leave cap stands alone — it constrains every window, not a date range.
   if (leaveCap !== null && !dateRef) {

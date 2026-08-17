@@ -66,7 +66,9 @@ function participantLines(
   const lines: string[] = [];
 
   if (includeCounts && window.counts.available > 0) {
-    lines.push(`✅ ${window.counts.available} can make it`);
+    lines.push(
+      `✅ ${window.counts.available} of ${participants.length} can make it`,
+    );
   }
 
   // UNKNOWN-driven maybes are named separately — collapsing them into a
@@ -252,7 +254,7 @@ export function renderTripCard(input: CardInput): string {
         const pending = w.counts.rosterPending > 0 ? ` · ${w.counts.rosterPending} roster pending` : "";
         lines.push(
           `${index + 1}. ${formatDateRange(w.window.start, w.window.end)} · ${w.window.days} days`,
-          `    ✅ ${w.counts.available} in · ${w.leaveDays} leave${pending}`,
+          `    ✅ ${w.counts.available} of ${input.participants.length} in · ${w.leaveDays} leave${pending}`,
         );
       });
       const attention = attentionLines(options[0]!, input.participants);

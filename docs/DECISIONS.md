@@ -565,6 +565,24 @@ Fully automatic start — creating a trip the moment the bot joins — was consi
 
 ---
 
+## Note (2026-08-17): what happens when most of the group is wide open
+
+The founder asked how the engine recommends when three of five members reply with generous leave (10/12/13 days) and "happy to travel whenever". Running it surfaced one correct behaviour and two defects.
+
+**Correct:** when availability stops discriminating — every window feasible for everyone who answered — the lexicographic ranking falls through to **leave cost**, so the shortlist becomes the cheapest windows of the year, spread across it by the diversity selector. That is the right fallback: with nothing to separate windows on people, separate them on what they cost.
+
+**Defect 1: "3 in" hid the denominator.** In a five-person group that reads like agreement when two people have not spoken at all. Counts are now "3 of 5 in" everywhere, including the single-window and confirmed views. The silent members were already named ("Mei and Dan — no dates yet"), but the headline number implied more consensus than existed.
+
+**Defect 2: the grammar declined "im free whenever" and "ok to travel anytime"** — plausibly the most common replies to "when are you free?" — sending both to the LLM. It now reads open-ended phrases (whenever, anytime, any dates, all good, flexible, don't mind) as AVAILABLE across the whole horizon.
+
+Two subtleties in that fix worth keeping:
+- **The wizard and ambient chat mean opposite things by the same word.** Answering "whenever" to *"how many days?"* means "I don't know"; saying "free whenever" in chat means "fully available". The two live in separate code paths, which is why both readings can be correct.
+- **Ordering mattered.** "Got 12 days leave, anytime works" originally returned only the cap, because the leave-cap branch returned before the open-ended check ran, silently dropping the availability. The open-ended branch now runs first and carries the cap with it.
+
+**Left as is:** the bot still presents a shortlist while 40% of the group is silent, rather than waiting for a quorum. That follows brief §10 — do not require unanimous certainty before showing something useful — and the card names who has not answered.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

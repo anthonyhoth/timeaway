@@ -93,7 +93,7 @@ describe("renderTripCard", () => {
     );
     expect(card).toMatch(/\d windows work so far/);
     expect(card).toMatch(/1\. .+ · \d days/);
-    expect(card).toMatch(/✅ \d in · \d+ leave/);
+    expect(card).toMatch(/✅ \d of \d in · \d+ leave/);
     expect(card).toContain("https://timeaway.sg/t/abc123");
   });
 

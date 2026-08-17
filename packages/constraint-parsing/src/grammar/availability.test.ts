@@ -192,3 +192,37 @@ describe("year inference prefers the trip's own window", () => {
     ).toBe(true);
   });
 });
+
+describe("open-ended availability", () => {
+  const wide = {
+    today: "2026-08-17",
+    horizonStart: "2026-11-01",
+    horizonEnd: "2027-10-31",
+  };
+
+  it("reads 'free whenever' as available across the whole trip window", () => {
+    for (const t of ["im free whenever", "ok to travel anytime", "any dates work for me", "i dun mind"]) {
+      expect(parseAvailabilityMessage(t, wide)?.declarations[0]).toEqual({
+        state: "AVAILABLE",
+        start: "2026-11-01",
+        end: "2027-10-31",
+      });
+    }
+  });
+
+  it("captures a leave cap and open availability from one message", () => {
+    // The cap alone used to win, silently dropping the availability.
+    const r = parseAvailabilityMessage("got 12 days leave, anytime works", wide);
+    expect(r?.maxLeaveDays).toBe(12);
+    expect(r?.declarations[0]).toMatchObject({ state: "AVAILABLE" });
+  });
+
+  it("is vetoed by negation or uncertainty", () => {
+    expect(parseAvailabilityMessage("cannot anytime", wide)).toBeNull();
+    expect(parseAvailabilityMessage("not sure whenever", wide)).toBeNull();
+  });
+
+  it("declines without a horizon, having nothing to mark", () => {
+    expect(parseAvailabilityMessage("im free whenever", { today: "2026-08-17" })).toBeNull();
+  });
+});
