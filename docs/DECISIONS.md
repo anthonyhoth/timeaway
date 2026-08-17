@@ -656,6 +656,50 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-18): the options were hard to read, and the card was teaching
+
+User feedback: the suggested dates were hard to read. Founder feedback: the
+worked examples repeat on every card and bloat the conversation.
+
+**Bare date numbers hid the only thing anyone cares about.** "9–13 Dec" makes
+the reader fetch a calendar to learn it is Wednesday to Sunday — which is the
+whole question when deciding whether a window is worth the leave. Options now
+read **"Wed 9 – Sun 13 Dec"**, and the leave arithmetic becomes legible with
+it: five days for three days off stops looking like a coincidence.
+
+**The rows repeated what the options had in common.** The engine spreads a
+shortlist across the horizon, so options routinely share a length and a leave
+cost — and every row said so:
+
+    1. 9–13 Dec 2026 · 5d · 2/4 · 3 leave
+    2. 17–21 Dec 2026 · 5d · 2/4 · 3 leave
+    3. 11–15 Dec 2026 · 5d · 2/4 · 3 leave
+
+Three scans to learn nothing. Shared facts are now stated once above the list,
+and a row carries only what actually differs — usually just the dates:
+
+    All 5 days · 3 leave days · 2 of 4 free
+
+    1. Wed 9 – Sun 13 Dec
+    2. Thu 17 – Mon 21 Dec
+    3. Fri 11 – Tue 15 Dec
+
+When the options genuinely differ, the facts move back onto the rows. Nothing
+is hidden; it is only ever said in one place.
+
+**The invitation card stopped teaching.** The worked examples ("cmi October",
+"only got 2 days AL") are onboarding — useful exactly once, which is what the
+join message is for — and they were reprinted every time a card was posted. A
+status card should say what is happening and what is still needed, so it now
+says it is listening and then **names who it is waiting on**. Shorter, and more
+useful: that is the thing which actually moves the trip along.
+
+**One decision per line in the header.** "Japan · 5–7 days (default) · looking
+at Dec" packs three separate choices into a run of middots. Stacked, each is
+answerable on its own — and each is something the group can change.
+
+---
+
 ## Decision (2026-08-18): ask the one person who can answer
 
 Built the ask-and-resolve flow for periods only the speaker can resolve. The
