@@ -1,4 +1,5 @@
 import type { ParticipantPlanningState } from "@timeaway/database";
+import { isSgHolidayCoverage, SG_HOLIDAY_COVERAGE_END } from "@timeaway/trip-engine";
 import type {
   EvaluatedWindow,
   ParticipantDiagnostic,
@@ -24,6 +25,9 @@ export interface CardInput {
   shortlist?: readonly EvaluatedWindow[];
   /** How many options this round offers — 5, then 3. */
   shortlistSize?: number;
+  /** The trip's window, so leave figures can be qualified past our data. */
+  horizonStart?: string | null;
+  horizonEnd?: string | null;
   /** Set once the organiser has confirmed; renders the settled state. */
   selected?: { start: string; end: string } | null;
 }
@@ -303,6 +307,20 @@ export function renderTripCard(input: CardInput): string {
     lines.push(
       "",
       `🙅 ${joinNames(sittingOut.map((p) => p.displayName))} sitting this one out`,
+    );
+  }
+
+  // Past gazetted data the leave maths is still right about weekends but
+  // blind to public holidays, which is exactly where the good windows are.
+  // Say so rather than quietly reporting a worse number.
+  if (
+    input.horizonStart &&
+    input.horizonEnd &&
+    !isSgHolidayCoverage(input.horizonStart, input.horizonEnd)
+  ) {
+    lines.push(
+      "",
+      `⏳ Leave counts ignore public holidays after ${SG_HOLIDAY_COVERAGE_END.slice(0, 4)} — I don't have them yet.`,
     );
   }
 

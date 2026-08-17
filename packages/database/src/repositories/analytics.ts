@@ -1,3 +1,4 @@
+import { and, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "../client.js";
 import { analyticsEvents } from "../schema/index.js";
 
@@ -24,4 +25,24 @@ export async function recordEvent(db: Db, input: EventInput): Promise<void> {
   } catch (error) {
     console.error("analytics write failed", input.event, error);
   }
+}
+
+/** How many of an event a trip has produced since a moment — used to cap spend. */
+export async function countEventsSince(
+  db: Db,
+  event: string,
+  tripId: string,
+  since: Date,
+): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(analyticsEvents)
+    .where(
+      and(
+        eq(analyticsEvents.event, event),
+        eq(analyticsEvents.tripId, tripId),
+        gte(analyticsEvents.createdAt, since),
+      ),
+    );
+  return row?.n ?? 0;
 }

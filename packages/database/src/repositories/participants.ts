@@ -97,6 +97,75 @@ export async function listDeclarations(
   return rows;
 }
 
+/** Everything held about one person, with ids so each item can be removed. */
+export async function listOwnRecord(
+  db: Db,
+  participantId: string,
+): Promise<{
+  declarations: {
+    id: string;
+    state: string;
+    start: string;
+    end: string;
+    source: string;
+    originalText: string | null;
+  }[];
+  notes: { id: string; kind: string; text: string }[];
+}> {
+  const declarations = await db
+    .select({
+      id: availabilityDeclarations.id,
+      state: availabilityDeclarations.state,
+      start: availabilityDeclarations.startDate,
+      end: availabilityDeclarations.endDate,
+      source: availabilityDeclarations.source,
+      originalText: availabilityDeclarations.originalText,
+    })
+    .from(availabilityDeclarations)
+    .where(eq(availabilityDeclarations.participantId, participantId))
+    .orderBy(asc(availabilityDeclarations.createdAt));
+
+  const notes = await db
+    .select({
+      id: participantNotes.id,
+      kind: participantNotes.kind,
+      text: participantNotes.originalText,
+    })
+    .from(participantNotes)
+    .where(eq(participantNotes.participantId, participantId))
+    .orderBy(asc(participantNotes.createdAt));
+
+  return { declarations, notes };
+}
+
+/** Remove one recorded item, checking it belongs to the asker. */
+export async function deleteDeclaration(
+  db: Db,
+  participantId: string,
+  declarationId: string,
+): Promise<boolean> {
+  const deleted = await db
+    .delete(availabilityDeclarations)
+    .where(
+      and(
+        eq(availabilityDeclarations.id, declarationId),
+        eq(availabilityDeclarations.participantId, participantId),
+      ),
+    )
+    .returning({ id: availabilityDeclarations.id });
+  return deleted.length > 0;
+}
+
+export async function clearLeaveCap(
+  db: Db,
+  participantId: string,
+): Promise<void> {
+  await db
+    .update(participants)
+    .set({ maxLeaveDays: null, maxLeaveDaysSourceText: null })
+    .where(eq(participants.id, participantId));
+}
+
 export async function setLeaveCap(
   db: Db,
   participantId: string,

@@ -70,6 +70,7 @@ void bot.api
     { command: "cancel", description: "Abandon the current trip setup" },
     { command: "pause", description: "Stop reading this chat" },
     { command: "resume", description: "Resume reading this chat" },
+    { command: "mine", description: "See and fix what I've recorded about you" },
     { command: "forget", description: "Delete everything I hold about you" },
     { command: "reset", description: "Archive this trip and start over" },
   ])

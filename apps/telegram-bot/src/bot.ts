@@ -20,13 +20,17 @@ import {
   archiveTrip,
   createTrip,
   listDeclarations,
+  clearLeaveCap,
+  deleteDeclaration,
   ensureParticipantForTelegramUser,
   findParticipantsForUserInTrip,
   forgetParticipant,
   findActivePlanningTripByChatId,
   getTripById,
   getTripByShortCode,
+  listOwnRecord,
   loadTripPlanningState,
+  countEventsSince,
   recordEvent,
   selectTripDates,
   setAmbientPaused,
@@ -76,7 +80,12 @@ export interface BotDeps {
   extractor?: ConstraintExtractor;
   /** Injectable for tests; defaults to today in Singapore time. */
   today?: () => ISODate;
+  /** Ceiling on LLM extractions per trip per day. */
+  llmCallsPerTripPerDay?: number;
 }
+
+/** Generous for a real group, low enough to bound a runaway chat. */
+const DEFAULT_LLM_CALL_CAP = 150;
 
 /** MVP beachhead is Singapore — "today" means SGT (UTC+8), not server time. */
 function todaySgt(): ISODate {
@@ -179,6 +188,7 @@ function forceReply(messageId: number, placeholder: string) {
 export function createBot(token: string, deps: BotDeps): Bot {
   const bot = new Bot(token);
   const today = deps.today ?? todaySgt;
+  const llmCap = deps.llmCallsPerTripPerDay ?? DEFAULT_LLM_CALL_CAP;
   const wizards = new Map<string, WizardState>();
 
   const keyOf = (chatId: number, userId: number) => `${chatId}:${userId}`;
@@ -294,6 +304,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
         "/calendar — mark your dates on a calendar",
         "/newtrip — start another trip",
         "/pause · /resume — stop or restart me reading this chat",
+        "/mine — see and fix what I've recorded about you",
         "/forget — delete everything I hold about you here",
         "/reset — archive this trip and start over",
         "",
@@ -301,6 +312,139 @@ export function createBot(token: string, deps: BotDeps): Bot {
         "destinations. Nothing else is stored.",
       ].join("\n"),
     );
+  });
+
+  /**
+   * What the bot holds about you, and the means to correct it.
+   *
+   * Both a trust feature and the PDPA access right: until now a misread was
+   * invisible *and* permanent, so someone could only guess why the dates
+   * looked wrong. Each item is shown with the words that produced it.
+   */
+  bot.command("mine", async (ctx) => {
+    if (!ctx.from) return;
+    const trip = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat.id),
+    );
+    if (!trip) {
+      await ctx.reply("No trip here yet, so I have nothing about you.");
+      return;
+    }
+    const participant = await ensureParticipantForTelegramUser(deps.db, trip.id, {
+      telegramUserId: String(ctx.from.id),
+      displayName: [ctx.from.first_name, ctx.from.last_name]
+        .filter(Boolean)
+        .join(" "),
+    });
+    const record = await listOwnRecord(deps.db, participant.id);
+
+    const lines: string[] = [`Here's everything I have for you, ${ctx.from.first_name}.`];
+    const keyboard = new InlineKeyboard();
+
+    if (record.declarations.length === 0) {
+      lines.push("", "No dates recorded.");
+    } else {
+      lines.push("", "Dates");
+      record.declarations.forEach((d, index) => {
+        const label =
+          d.state === "AVAILABLE"
+            ? "Can make it"
+            : d.state === "UNAVAILABLE"
+              ? "Can't make it"
+              : d.state === "UNKNOWN"
+                ? "Don't know yet"
+                : "Maybe";
+        lines.push(
+          `${index + 1}. ${label} · ${formatDateRange(d.start, d.end)}`,
+          d.originalText ? `    from “${d.originalText}”` : "    from the calendar",
+        );
+        keyboard.text(`Remove ${index + 1}`, `del:${d.id}`);
+        if ((index + 1) % 3 === 0) keyboard.row();
+      });
+      keyboard.row();
+    }
+
+    if (participant.maxLeaveDays !== null) {
+      lines.push(
+        "",
+        `Leave: up to ${participant.maxLeaveDays} ${participant.maxLeaveDays === 1 ? "day" : "days"}` +
+          (participant.maxLeaveDaysSourceText
+            ? `\n    from “${participant.maxLeaveDaysSourceText}”`
+            : ""),
+      );
+      keyboard.text("Clear leave limit", "clearcap").row();
+    }
+
+    if (record.notes.length > 0) {
+      lines.push("", "Noted");
+      for (const n of record.notes) lines.push(`• “${n.text}”`);
+    }
+
+    lines.push(
+      "",
+      "Anything wrong, remove it and just say it again. /forget deletes the lot.",
+    );
+
+    await ctx.reply(lines.join("\n"), {
+      reply_parameters: { message_id: ctx.msg.message_id },
+      reply_markup: keyboard,
+    });
+  });
+
+  bot.callbackQuery(/^del:(.+)$/, async (ctx) => {
+    const trip = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat!.id),
+    );
+    if (!trip) {
+      await ctx.answerCallbackQuery("That trip is no longer active.");
+      return;
+    }
+    // Scoped to the asker's own participant row, so one person can never
+    // delete another's dates from a card they can see.
+    const participant = await ensureParticipantForTelegramUser(deps.db, trip.id, {
+      telegramUserId: String(ctx.from.id),
+      displayName: [ctx.from.first_name, ctx.from.last_name]
+        .filter(Boolean)
+        .join(" "),
+    });
+    const removed = await deleteDeclaration(
+      deps.db,
+      participant.id,
+      (ctx.match as RegExpMatchArray)[1]!,
+    );
+    await ctx.answerCallbackQuery(removed ? "Removed." : "That wasn't yours to remove.");
+    if (!removed) return;
+
+    void recordEvent(deps.db, {
+      event: "declaration_corrected",
+      tripId: trip.id,
+      chatId: String(ctx.chat!.id),
+    });
+    const updated = await getTripById(deps.db, trip.id);
+    if (updated) await refreshTripCard(ctx, updated);
+  });
+
+  bot.callbackQuery("clearcap", async (ctx) => {
+    const trip = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat!.id),
+    );
+    if (!trip) {
+      await ctx.answerCallbackQuery("That trip is no longer active.");
+      return;
+    }
+    const participant = await ensureParticipantForTelegramUser(deps.db, trip.id, {
+      telegramUserId: String(ctx.from.id),
+      displayName: [ctx.from.first_name, ctx.from.last_name]
+        .filter(Boolean)
+        .join(" "),
+    });
+    await clearLeaveCap(deps.db, participant.id);
+    await ctx.answerCallbackQuery("Cleared.");
+    const updated = await getTripById(deps.db, trip.id);
+    if (updated) await refreshTripCard(ctx, updated);
   });
 
   bot.command("forget", async (ctx) => {
@@ -811,6 +955,27 @@ export function createBot(token: string, deps: BotDeps): Bot {
     let source: "grammar" | "llm" = "grammar";
     if (!result) {
       if (!deps.extractor) return;
+
+      // Spend is otherwise unbounded: cost scales with how chatty a group is,
+      // and nothing stops the bot being added to a 500-person chat. Past the
+      // cap it degrades to grammar-only rather than stopping — the common
+      // phrasings still work, which is the behaviour when no key is set.
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const used = await countEventsSince(deps.db, "llm_call", trip.id, since);
+      if (used >= llmCap) {
+        void recordEvent(deps.db, {
+          event: "llm_cap_reached",
+          tripId: trip.id,
+          chatId: String(ctx.chat!.id),
+          properties: { used },
+        });
+        return;
+      }
+      void recordEvent(deps.db, {
+        event: "llm_call",
+        tripId: trip.id,
+        chatId: String(ctx.chat!.id),
+      });
       source = "llm";
       try {
         result = await deps.extractor.extract(text, extractionCtx);
@@ -944,6 +1109,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
       diagnostics,
       shortlist,
       shortlistSize,
+      horizonStart: trip.horizonStart,
+      horizonEnd: trip.horizonEnd,
     });
 
     let keyboard: InlineKeyboard | undefined;
@@ -952,6 +1119,11 @@ export function createBot(token: string, deps: BotDeps): Bot {
       if (shortlistSize > 3 && shortlist.length > 3) {
         // Round one: the group reacts to the spread before choosing.
         keyboard.text("Narrow to 3", "trip:narrow");
+        // The bot already knows who is missing; until now it never asked.
+        const quiet = shortlist[0]!.participants.filter(
+          (p) => p.status === "UNANSWERED" || p.dayCounts.unknown > 0,
+        );
+        if (quiet.length > 0) keyboard.text("Ask the quiet ones", "trip:nudge");
       } else {
         // Final round: one button per remaining option.
         shortlist.forEach((w) => {
@@ -1114,6 +1286,64 @@ export function createBot(token: string, deps: BotDeps): Bot {
     await ctx.answerCallbackQuery("Listening now.");
     await ctx.editMessageReplyMarkup({ reply_markup: undefined });
     await refreshTripCard(ctx, trip);
+  });
+
+  bot.callbackQuery("trip:nudge", async (ctx) => {
+    const trip = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat!.id),
+    );
+    if (!trip) {
+      await ctx.answerCallbackQuery("That trip is no longer active.");
+      return;
+    }
+    if (!(await isTripOrganiser(trip, ctx.from))) {
+      await ctx.answerCallbackQuery({
+        text: "Only the organiser can send a nudge.",
+        show_alert: true,
+      });
+      return;
+    }
+
+    const people = await loadTripPlanningState(deps.db, trip.id);
+    const quiet = people.filter(
+      (p) => !p.optedOut && p.declarations.length === 0,
+    );
+    const pending = people.filter(
+      (p) =>
+        !p.optedOut &&
+        p.declarations.some((d) => d.state === "UNKNOWN"),
+    );
+    if (quiet.length === 0 && pending.length === 0) {
+      await ctx.answerCallbackQuery("Everyone's already answered.");
+      return;
+    }
+
+    const parts: string[] = [];
+    if (quiet.length > 0) {
+      parts.push(
+        `${quiet.map((p) => p.displayName).join(", ")} — your dates would lock this in. ` +
+          "Just say when you can't make it.",
+      );
+    }
+    if (pending.length > 0) {
+      parts.push(
+        `${pending.map((p) => p.displayName).join(", ")} — any news on your roster?`,
+      );
+    }
+    // No "count me out" nag: opting out is already a valid answer, and
+    // pestering someone who has quietly decided not to travel is worse than
+    // waiting.
+    parts.push("Not coming? Say “count me out” and I'll take you off.");
+
+    void recordEvent(deps.db, {
+      event: "nudge_sent",
+      tripId: trip.id,
+      chatId: String(ctx.chat!.id),
+      properties: { quiet: quiet.length, rosterPending: pending.length },
+    });
+    await ctx.answerCallbackQuery("Asked them.");
+    await ctx.reply(parts.join("\n\n"));
   });
 
   bot.callbackQuery("trip:narrow", async (ctx) => {

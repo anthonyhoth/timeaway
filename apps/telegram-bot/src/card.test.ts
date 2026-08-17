@@ -224,3 +224,32 @@ describe("non-schedule opinions", () => {
     expect(card).toMatch(/windows work so far|One window works/);
   });
 });
+
+describe("data coverage cliff", () => {
+  // Only meaningful once leave figures are on screen — the invitation state
+  // quotes no numbers, so qualifying them there would be noise.
+  const answered = () =>
+    build([
+      person("p1", "Anthony", [
+        { state: "AVAILABLE", start: "2026-11-02", end: "2026-11-20" },
+      ]),
+    ]);
+
+  it("warns when the trip runs past our public-holiday data", () => {
+    const card = renderTripCard({
+      ...answered(),
+      horizonStart: "2028-01-01",
+      horizonEnd: "2028-06-30",
+    });
+    expect(card).toContain("Leave counts ignore public holidays after 2027");
+  });
+
+  it("stays quiet inside covered years", () => {
+    const card = renderTripCard({
+      ...answered(),
+      horizonStart: "2026-11-01",
+      horizonEnd: "2026-11-30",
+    });
+    expect(card).not.toContain("ignore public holidays");
+  });
+});

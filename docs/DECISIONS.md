@@ -656,6 +656,24 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): correction path, spend cap, data-cliff honesty, nudge loop, deploy config
+
+Clearing the five items left open after the trial-readiness pass.
+
+**`/mine` — see and fix what the bot recorded.** Until now a misread was both invisible and permanent: someone could see the dates were wrong but had no way to find out why, let alone correct it. `/mine` lists every declaration **with the words that produced it** ("Can't make it · 1–31 Oct 2026 — from 'cmi october'"), the leave limit and its source, and any notes, each with a Remove button. Deletions are scoped to the asker's own participant row, so one person can never remove another's dates from a card they can happen to see. This is simultaneously the trust fix for misparsing and the PDPA *access* right, where `/forget` was only the *erasure* right.
+
+**LLM spend is capped per trip per day** (150 by default). Cost previously scaled with how chatty a group was, with nothing stopping the bot being added to a 500-person chat. Past the cap it **degrades to grammar-only rather than stopping** — the common phrasings still work, which is exactly the behaviour when no API key is configured, so the failure mode was already designed and tested. Both `llm_call` and `llm_cap_reached` are recorded, so spend is observable before it is surprising.
+
+**The 2027 data cliff is now stated, not silent.** Past gazetted coverage the leave arithmetic remains correct about weekends but blind to public holidays — precisely where the good windows are — so it would quietly report worse numbers with no indication anything was missing. The card now says so, but only once real leave figures are on screen; qualifying numbers that aren't shown yet would be noise.
+
+**The nudge loop.** The bot always knew who had not answered and whose roster was pending, and had never once asked them — the gap behind the founder's "magical once, not habit-forming" risk. The organiser now gets an "Ask the quiet ones" button beside "Narrow to 3", which names the silent and the roster-pending separately and closes with a reminder that "count me out" is a valid answer. Deliberately **not** a nag at people who have opted out, and organiser-gated like every other outbound action.
+
+**Deploy config, not a deploy.** `railway.json` fixes the build, start command and health check; `DEPLOY.md` is the runbook. Three things it calls out because they will otherwise bite: run **one instance** (wizard, calendar and pending-edit state is in memory), **migrations are not automatic**, and a **redeploy clears that in-memory state** so anyone mid-wizard restarts, while stored trips and availability are untouched.
+
+**Still open:** in-memory state itself (the reason for the single-instance rule), the 2028 holiday table when MOM publishes it, third-party relay ("Sheryl can only do school holidays"), and a way for participants to carry across trips in the same chat — the cheap half of "saved groups" for repeat use.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
