@@ -656,6 +656,40 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): acknowledging is not the same as explaining
+
+Founder: *"No messages are being reacted to. Do I need to remove the bot and
+re-add it?"* — No, and that question is itself the bug report. The trip was
+live and unpaused; the bot was polling and had created a trip minutes earlier.
+Nothing about membership was wrong.
+
+What happened is in the analytics: `llm_call` then
+`extraction_failed {failure: "quota"}`. The OpenAI balance is still empty, so
+the breaker opened. From then on, anything the grammar declined made no LLM
+call — correct — and the "say it plainly" notice was suppressed by its
+**once-per-hour, per-chat** rate limit, which I set to avoid nagging.
+
+The combination is worse than nagging. Every unparsed message produced *nothing
+at all*, for an hour at a time, and a bot that reads your message and says
+nothing is indistinguishable from a bot that is broken. The founder's instinct
+was to go and re-add it — the fix for a *dead* bot — which is exactly the wrong
+action and the clearest evidence the feedback was wrong.
+
+So the two are separated. The **acknowledgement** is unconditional: every
+message that looked like a constraint and could not be read now gets a 🤔
+reaction. It costs the group nothing, adds no message to the chat, and answers
+the only question that matters in the moment — *did it hear me?* The
+**explanation** stays rate-limited, because that is the part that would nag.
+
+Ordinary chatter is untouched: the reaction sits behind the stage-1 gate, so
+only messages that plausibly carried dates are ever marked.
+
+The general rule, which the silence bugs keep re-teaching: **a system that
+cannot act must still respond.** Silence is never a neutral outcome in a chat —
+it is read as failure, and it sends people to fix things that are not broken.
+
+---
+
 ## Decision (2026-08-17): a group stating its plan was talking to nobody
 
 Founder, from a live group: *"we want to go Hainan this year end"*, *"planning

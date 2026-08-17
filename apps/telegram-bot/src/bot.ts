@@ -1238,6 +1238,27 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
 
     /**
+     * Seen, but not understood.
+     *
+     * The full "say it plainly" notice is rate-limited so it does not nag,
+     * which turned out to be worse than nagging: with the extractor down every
+     * unparsed message produced *nothing at all*, for an hour at a time, and a
+     * bot that reads your message and says nothing is indistinguishable from a
+     * bot that is broken.
+     *
+     * A reaction costs the group nothing and answers the only question that
+     * matters in the moment — did it hear me? — so it is sent every time, with
+     * the wordier explanation still held back to once an hour.
+     */
+    const markUnparsed = async (): Promise<void> => {
+      try {
+        await ctx.react("🤔");
+      } catch (error) {
+        console.error("reaction failed", error);
+      }
+    };
+
+    /**
      * One ack per message, however many signals it carried. Reacting inside
      * each branch double-reacted on "free in Nov but budget's tight" — and,
      * worse, the note branch returned before the dates were ever read.
@@ -1300,7 +1321,10 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
 
     if (!result) {
-      if (!deps.extractor) return finish(noted);
+      if (!deps.extractor) {
+        await markUnparsed();
+        return finish(noted);
+      }
 
       // A standing outage (no credits, dead key) fails identically on every
       // message. Skip the call while the breaker is open, and say something —
@@ -1311,6 +1335,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
             reply_parameters: replyTo(ctx.msg!.message_id),
           });
         }
+        await markUnparsed();
         return finish(noted);
       }
 
@@ -1327,6 +1352,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
           chatId: String(ctx.chat!.id),
           properties: { used },
         });
+        await markUnparsed();
         return finish(noted);
       }
       void recordEvent(deps.db, {
@@ -1357,6 +1383,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
             reply_parameters: replyTo(ctx.msg!.message_id),
           });
         }
+        await markUnparsed();
         return finish(noted);
       }
     }
@@ -1365,6 +1392,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     // resolution we don't have yet — skip rather than guess. TODO(task 8+).
     if (result.subjectName) return finish(noted);
     if (result.declarations.length === 0 && result.maxLeaveDays === null) {
+      if (!noted) await markUnparsed();
       return finish(noted);
     }
 

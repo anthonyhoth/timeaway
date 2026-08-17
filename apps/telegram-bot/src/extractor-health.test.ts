@@ -83,3 +83,27 @@ describe("ExtractorHealth", () => {
     expect(health.shouldNotify("-200")).toBe(true);
   });
 });
+
+/**
+ * The two-tier policy, learned the hard way.
+ *
+ * The wordy notice is rate-limited so the bot does not nag. On its own that was
+ * worse than nagging: with the extractor down, every unparsed message produced
+ * nothing at all for an hour, and a bot that reads your message and says
+ * nothing looks exactly like a bot that is broken.
+ *
+ * So the *explanation* is rate-limited and the *acknowledgement* is not — the
+ * handler reacts to every unparsed message, and only consults this for whether
+ * to spell out why.
+ */
+describe("acknowledging is not the same as explaining", () => {
+  it("holds the explanation back without holding back the ack", () => {
+    let now = 0;
+    const health = new ExtractorHealth(() => now);
+    expect(health.shouldNotify("-100")).toBe(true);
+    // Silent for the rest of the hour — which is exactly why the reaction in
+    // the handler is unconditional.
+    now += 5 * 60 * 1000;
+    expect(health.shouldNotify("-100")).toBe(false);
+  });
+});
