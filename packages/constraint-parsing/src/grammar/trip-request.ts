@@ -35,6 +35,8 @@ const FILLER = new Set([
   "off", "forget", "scrap", "no", "not", "longer", "out", "is", "are", "it",
   "what", "how", "about", "list", "sure", "try", "trying", "lets", "let",
   "can", "cannot", "cant", "do", "does", "doing", "done", "shall", "should",
+  "push", "move", "moving", "make", "making", "long", "short", "shorter",
+  "longer", "extend", "shorten",
   // Time nouns that survive the temporal pass but are never places.
   "today", "tomorrow", "tonight", "weekend", "week", "month", "year", "date",
   "dates", "time", "period",

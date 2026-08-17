@@ -1,11 +1,12 @@
 import type { ConstraintExtractor } from "@timeaway/constraint-parsing";
 import {
   applyDestinationEdit,
+  describeTripEdit,
   isUnknownAnswer,
   mightContainConstraint,
   parseAvailabilityMessage,
-  parseDestinationEdit,
   parseDurationRange,
+  parseTripEdit,
   parseTripRequest,
   resolveHorizon,
 } from "@timeaway/constraint-parsing";
@@ -25,6 +26,7 @@ import {
   setCardMessageId,
   setDestinationCandidates,
   setLeaveCap,
+  setTripShape,
   setShortlistSize,
   setTripChatId,
   upsertTelegramUser,
@@ -563,22 +565,35 @@ export function createBot(token: string, deps: BotDeps): Bot {
     // Stage 2: deterministic grammar handles the common phrasings for free.
     // The LLM is consulted only for what the grammar declines to claim
     // (founder-decided, docs/DECISIONS.md).
-    // Someone steering the destination in conversation — "let's try Korea
-    // too", "Korea instead". Checked before the LLM, and after availability
-    // so a message about dates that names a country isn't misread.
-    const current = trip.destinationCandidates ?? [];
-    const edit = parseDestinationEdit(text, today(), current);
-    if (edit && !parseAvailabilityMessage(text, extractionCtx)) {
-      const next = applyDestinationEdit(current, edit);
-      await setDestinationCandidates(deps.db, trip.id, next);
-      try {
-        await ctx.react("✍");
-      } catch (error) {
-        console.error("reaction failed", error);
+    // Someone steering the trip itself — "Korea too", "push to December",
+    // "make it 5 days". Checked after availability, so a message about a
+    // person's own dates is never mistaken for a change to the plan.
+    if (!parseAvailabilityMessage(text, extractionCtx)) {
+      const current = trip.destinationCandidates ?? [];
+      const edit = parseTripEdit(text, today(), current);
+      if (edit) {
+        const isOrganiser = await isTripOrganiser(trip, ctx.from!);
+        if (!edit.destructive || isOrganiser) {
+          await applyTripEdit(trip, edit, current);
+          try {
+            await ctx.react("✍");
+          } catch (error) {
+            console.error("reaction failed", error);
+          }
+          const afterEdit = await getTripById(deps.db, trip.id);
+          if (afterEdit) await refreshTripCard(ctx, afterEdit);
+        } else {
+          // A destructive change from someone who isn't the organiser: hold
+          // it for approval rather than silently ignoring them.
+          const id = String(pendingEditSeq++);
+          pendingEdits.set(id, { tripId: trip.id, edit, current });
+          await ctx.reply(`Change the trip to ${describeTripEdit(edit)}?`, {
+            reply_parameters: { message_id: ctx.msg!.message_id },
+            reply_markup: new InlineKeyboard().text("Apply", `edit:${id}`),
+          });
+        }
+        return;
       }
-      const afterEdit = await getTripById(deps.db, trip.id);
-      if (afterEdit) await refreshTripCard(ctx, afterEdit);
-      return;
     }
 
     let result = parseAvailabilityMessage(text, extractionCtx);
@@ -752,6 +767,74 @@ export function createBot(token: string, deps: BotDeps): Bot {
     });
     await setCardMessageId(deps.db, trip.id, String(message.message_id));
   }
+
+  interface PendingEdit {
+    tripId: string;
+    edit: NonNullable<ReturnType<typeof parseTripEdit>>;
+    current: string[];
+  }
+  const pendingEdits = new Map<string, PendingEdit>();
+  let pendingEditSeq = 1;
+
+  async function isTripOrganiser(
+    trip: Trip,
+    from: { id: number; first_name: string; last_name?: string },
+  ): Promise<boolean> {
+    const user = await upsertTelegramUser(deps.db, {
+      telegramUserId: String(from.id),
+      displayName: [from.first_name, from.last_name].filter(Boolean).join(" "),
+    });
+    return user.id === trip.organiserId;
+  }
+
+  async function applyTripEdit(
+    trip: Trip,
+    edit: NonNullable<ReturnType<typeof parseTripEdit>>,
+    current: readonly string[],
+  ): Promise<void> {
+    if (edit.destination) {
+      await setDestinationCandidates(
+        deps.db,
+        trip.id,
+        applyDestinationEdit(current, edit.destination),
+      );
+    }
+    if (edit.horizon || edit.duration) {
+      await setTripShape(deps.db, trip.id, {
+        horizonStart: edit.horizon?.start,
+        horizonEnd: edit.horizon?.end,
+        durationMinDays: edit.duration?.min,
+        durationMaxDays: edit.duration?.max,
+      });
+    }
+  }
+
+  bot.callbackQuery(/^edit:(\d+)$/, async (ctx) => {
+    const key = (ctx.match as RegExpMatchArray)[1]!;
+    const pending = pendingEdits.get(key);
+    if (!pending) {
+      await ctx.answerCallbackQuery("That suggestion has expired.");
+      return;
+    }
+    const trip = await getTripById(deps.db, pending.tripId);
+    if (!trip) {
+      await ctx.answerCallbackQuery("That trip is no longer active.");
+      return;
+    }
+    if (!(await isTripOrganiser(trip, ctx.from))) {
+      await ctx.answerCallbackQuery({
+        text: "Only the organiser can change the trip.",
+        show_alert: true,
+      });
+      return;
+    }
+    await applyTripEdit(trip, pending.edit, pending.current);
+    pendingEdits.delete(key);
+    await ctx.answerCallbackQuery("Updated.");
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    const updated = await getTripById(deps.db, trip.id);
+    if (updated) await refreshTripCard(ctx, updated, { forceNew: true });
+  });
 
   bot.callbackQuery("trip:narrow", async (ctx) => {
     const trip = await findActivePlanningTripByChatId(

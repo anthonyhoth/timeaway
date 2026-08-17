@@ -525,6 +525,30 @@ The founder set out the intended shape of the product loop: collect constraints,
 
 ---
 
+## Decision (2026-08-17, founder-directed): the trip can be edited in conversation, with additive changes open and destructive ones gated
+
+Trip shape was frozen at creation — the gap behind several earlier problems, including an assumed 3–7 day duration being permanent. The founder asked for conversational editing: "let's try Korea too" adds a candidate, "let's go Korea instead" replaces. Extended, on the founder's direction, to dates and length as well.
+
+**Permission model (founder-decided):**
+- **Additive changes apply immediately, for anyone.** "Korea too" just works — it takes nothing away.
+- **Destructive changes need the organiser.** Replacing or removing a destination, moving the dates, or changing the length discards something the group already agreed. From the organiser they apply directly; from anyone else the bot holds the change and offers the organiser an Apply button, rather than silently ignoring a real suggestion. Consistent with organiser-confirms-dates.
+- **Acknowledgement is a ✍ reaction plus the updated card**, matching the ambient no-noise rule. The card is the shared record, so a wrong edit is visible and correctable without extra messages.
+
+**Guards, because a wrongly rewritten trip is worse than a missed edit:**
+1. An explicit edit word is required — plain chatter never edits anything.
+2. **Availability is parsed first.** "Can also do December" is someone describing *themselves*, not asking to move the trip; only messages availability declines are considered as edits.
+3. Temporal tokens are consumed before destination extraction, so "let's go in June instead" moves the *dates* rather than inventing a place called "June".
+4. REPLACE and REMOVE must name a destination the trip already has — the guard that stops "not sure" deleting an imaginary place called "Sure".
+5. A horizon edit is only read when no place and no duration were named, so "Korea instead" moves the destination, not the calendar.
+
+**Filler vocabulary did the heavy lifting**, and every gap in it produced a real bug during testing: "can also consider taiwan" yielded a place called "Can Taiwan"; "actually lets do korea" yielded "Do Korea"; "lets push to december instead" yielded "Push"; "long weekend instead" yielded "Long". Each was fixed by teaching the parser which words are never place names.
+
+**Accepted limitation:** there is no gazetteer, so ADD trusts the residue to be a place. That is deliberate — it lets unknown destinations work without maintaining a list — and the visible card is the safety net.
+
+**Not built:** pending edits live in memory, so a restart drops an unapproved suggestion. Fine for a proposal that is seconds old; worth moving to the database alongside wizard state if multiple instances ever run.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

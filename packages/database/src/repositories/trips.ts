@@ -137,6 +137,26 @@ export async function setDestinationCandidates(
     .where(eq(trips.id, tripId));
 }
 
+/** Change the trip's window or length from a conversational edit. */
+export async function setTripShape(
+  db: Db,
+  tripId: string,
+  shape: {
+    horizonStart?: string;
+    horizonEnd?: string;
+    durationMinDays?: number;
+    durationMaxDays?: number;
+  },
+): Promise<void> {
+  const patch: Record<string, unknown> = {};
+  if (shape.horizonStart) patch.horizonStart = shape.horizonStart;
+  if (shape.horizonEnd) patch.horizonEnd = shape.horizonEnd;
+  if (shape.durationMinDays) patch.durationMinDays = shape.durationMinDays;
+  if (shape.durationMaxDays) patch.durationMaxDays = shape.durationMaxDays;
+  if (Object.keys(patch).length === 0) return;
+  await db.update(trips).set(patch).where(eq(trips.id, tripId));
+}
+
 export async function setAmbientPaused(
   db: Db,
   tripId: string,
