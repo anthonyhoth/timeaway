@@ -18,9 +18,15 @@ const PATTERNS: RegExp[] = [
   /\b\d{1,2}(?:st|nd|rd|th)\b/i,
   // availability vocabulary
   /\b(?:free|avail(?:able)?|busy|leave|off\b|offs)\b/i,
+  // "AL" is how Singaporeans write annual leave, and it rarely appears with
+  // the word "leave" beside it — "got 12 AL" was being discarded here, before
+  // the grammar or the LLM ever saw it.
+  /\b(?:al|annual leave)\b/i,
   /\b(?:can(?:'?t| ?not)?|cannot|cmi)\b/i,
   /\b(?:ok|okay|on\b|confirm(?:ed)?)\b/i,
-  /\b(?:roster|shift|schedule|ns\b|reservist|icct?|exam|exams)\b/i,
+  // "icct?" matched "icc" and "icct" but never "ict", so In-Camp Training —
+  // which the availability grammar handles — never reached it.
+  /\b(?:roster|shift|schedule|ns\b|reservist|ict|mob|manning|exam|exams)\b/i,
   /\b(?:holiday|holidays|ph\b|long weekend|school hols?)\b/i,
   /\b(?:week|weekend|weekday|next month|this month|month end)\b/i,
   /\b(?:date|dates|when|window|trip|travel|fly|flight)\b/i,

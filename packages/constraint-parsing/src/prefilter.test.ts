@@ -36,3 +36,25 @@ describe("mightContainConstraint", () => {
     expect(mightContainConstraint("x".repeat(1500))).toBe(false);
   });
 });
+
+describe("Singaporean leave and NS shorthand reaches the grammar", () => {
+  it("lets AL through", () => {
+    // These were discarded at the gate, so no parser ever saw them.
+    for (const text of ["got 12 AL", "12 al", "no more AL", "AL left 6"]) {
+      expect(mightContainConstraint(text), text).toBe(true);
+    }
+  });
+
+  it("lets ICT through", () => {
+    // The pattern read "icct?", which matches "icc" and "icct" but never "ict".
+    expect(mightContainConstraint("got ict")).toBe(true);
+  });
+
+  it("lets mobilisation manning through", () => {
+    expect(mightContainConstraint("mob manning")).toBe(true);
+  });
+
+  it("still drops ordinary chatter", () => {
+    expect(mightContainConstraint("the food there damn shiok")).toBe(false);
+  });
+});

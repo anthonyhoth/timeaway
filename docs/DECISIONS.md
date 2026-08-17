@@ -656,6 +656,42 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): AL without the unit, and two gate bugs behind it
+
+Founder: *"AL should be accepted as an abbreviation for Annual Leave too."*
+
+`AL` was already in the leave-cap patterns, but only alongside the word
+**days** — so `"only got 3 days AL left"` worked while `"got 12 AL"`,
+`"still got 8 al"` and `"AL left 6"` did not. That is backwards: the bare form
+is how people actually write it, so the most natural phrasings were exactly the
+ones that failed.
+
+Probing it surfaced a worse problem one layer up. The stage-1 prefilter had no
+`al` vocabulary at all, so most AL messages were **discarded before any parser
+ran** — not escalated to the LLM, just dropped. `"no more AL"` parsed correctly
+as a zero cap and still never reached the grammar in production.
+
+The same probe exposed a typo in the NS pattern: `icct?` matches "icc" and
+"icct" but **never "ict"**. In-Camp Training has been handled by the
+availability grammar since the Singlish work, and gated out before reaching it
+the whole time. `mob` and `manning` were added alongside it, since yesterday's
+NS vocabulary had the same exposure.
+
+Both cases are the prefilter's stated failure mode inverted — it is documented
+as "recall over precision, because a false negative silently loses a
+constraint", and these were silently losing constraints.
+
+Exhausted leave now reads as a **zero cap** rather than no cap: `"burnt all my
+AL"`, `"my AL all used up"`, `"habis"`. Zero is a hard constraint; absent means
+unconstrained, and the two are opposites.
+
+One guard worth noting: the reversed pattern requires a connective
+(`AL left 6`, `AL balance 9`, `my AL is 14`). A bare `"Al 5"` is left alone,
+because **Al is also a name** and a five-day leave cap invented from someone's
+name would be invisible to everyone.
+
+---
+
 ## Decision (2026-08-17): retractions — the one gap the architecture could not close
 
 Founder shared external research on non-LLM ambient parsing. Most of it

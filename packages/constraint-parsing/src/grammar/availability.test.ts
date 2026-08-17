@@ -418,3 +418,48 @@ describe("sub-periods narrow instead of declining", () => {
     });
   });
 });
+
+/**
+ * "AL" is the ordinary Singaporean word for annual leave, and it is usually
+ * written without the unit. Requiring "days" meant the most natural phrasings
+ * were exactly the ones that failed — and the prefilter discarded most of them
+ * before the grammar or the LLM ever saw them.
+ */
+describe("AL as annual leave", () => {
+  it("reads a cap stated with the bare abbreviation", () => {
+    for (const [text, expected] of [
+      ["got 12 AL", 12],
+      ["i have 10 AL left", 10],
+      ["only 5 al left", 5],
+      ["12 al", 12],
+      ["still got 8 al", 8],
+      ["left 4 al", 4],
+      ["i have 14 annual leave", 14],
+    ] as const) {
+      expect(parse(text)?.maxLeaveDays, text).toBe(expected);
+    }
+  });
+
+  it("reads the reversed forms", () => {
+    expect(parse("AL left 6")?.maxLeaveDays).toBe(6);
+    expect(parse("al balance 9")?.maxLeaveDays).toBe(9);
+    expect(parse("my AL is 14 days")?.maxLeaveDays).toBe(14);
+  });
+
+  it("still reads the forms that spell out the unit", () => {
+    expect(parse("only got 3 days AL left")?.maxLeaveDays).toBe(3);
+    expect(parse("i got 12 days al")?.maxLeaveDays).toBe(12);
+    expect(parse("AL only 5 days")?.maxLeaveDays).toBe(5);
+  });
+
+  it("treats exhausted leave as a zero cap, not an absent one", () => {
+    for (const text of ["no more AL", "burnt all my AL", "my AL all used up"]) {
+      expect(parse(text)?.maxLeaveDays, text).toBe(0);
+    }
+  });
+
+  it("does not mistake the name Al for a leave cap", () => {
+    // A bare "Al 5" is ambiguous, so the connective is required.
+    expect(parse("Al 5 mins away")?.maxLeaveDays ?? null).toBeNull();
+  });
+});

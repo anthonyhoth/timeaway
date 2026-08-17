@@ -104,17 +104,36 @@ const OPEN_ENDED =
 const BLOCKING_COMMITMENT =
   /\b(?:reservist|ict|in ?camp|ns\b|ns ?duty|mob(?:ilisation|ilization)?[ -]?mann?in[g']?|ops? ?mann?in[g']?|mob ?ex|high[ -]?key|low[ -]?key|recall(?:ed)?|exam(?:s)?|wedding|work trip|bto|attachment)\b/i;
 
+/**
+ * No leave left at all — a zero cap, which is a hard constraint rather than an
+ * absent one. "Burnt", "used up" and "habis" are how people actually say it.
+ */
+const EXHAUSTED_LEAVE =
+  /\b(?:no|zero)\s+(?:more\s+)?(?:al|leave|annual leave)\b|\b(?:al|leave|annual leave)\b[^.]{0,24}\b(?:all used up|used up|used finish|finished|habis|gone|none left|no more)\b|\b(?:burnt|burned|used up|finished|cleared|habis)\b[^.]{0,24}\b(?:al|leave|annual leave)\b/i;
+
 function stripParticles(text: string): string {
   return text.replace(PARTICLES, " ").replace(/\s+/g, " ").trim();
 }
 
-/** "max 2 days leave", "only got 2 days AL", "2 day leave left". */
+/**
+ * "max 2 days leave", "only got 2 days AL", "2 day leave left".
+ *
+ * "AL" is the ordinary Singaporean word for annual leave, and it is usually
+ * written *without* the unit — "got 12 AL", "still got 8 al", "AL left 6".
+ * Requiring "days" meant the most natural phrasings were the ones that failed.
+ */
 function findLeaveCap(text: string): number | null {
-  if (/\b(?:no|zero) (?:more )?(?:leave|al)\b/i.test(text)) return 0;
+  if (EXHAUSTED_LEAVE.test(text)) return 0;
   const patterns = [
     /\b(?:max(?:imum)?|only|just|got|left|have)\s+(\d{1,2})\s*(?:days?|d)\s*(?:of\s*)?(?:leave|al|annual leave|off)\b/i,
     /\b(\d{1,2})\s*(?:days?|d)\s*(?:of\s*)?(?:leave|al|annual leave)\s*(?:left|only|max)?\b/i,
     /\b(?:leave|al)\s*(?:only|left)?\s*(\d{1,2})\s*days?\b/i,
+    // Bare unit: "12 al", "14 annual leave", "12 days al".
+    /\b(\d{1,2})\s*(?:days?\s*)?(?:of\s+)?(?:al|annual leave)\b/i,
+    // Reversed: "AL left 6", "my AL is 14", "AL balance 9". The connective is
+    // required, not optional — "Al" is also a name, and a bare "Al 5" should
+    // not silently become a five-day leave cap.
+    /\b(?:al|annual leave)\s*(?:balance|left|remaining|only|is|:)\s*(\d{1,2})\b/i,
   ];
   for (const pattern of patterns) {
     const match = pattern.exec(text);
