@@ -10,3 +10,4 @@ export * from "./notes.js";
 export * from "./reversal.js";
 export * from "./option-reference.js";
 export * from "./underspecified.js";
+export * from "./multi-span.js";

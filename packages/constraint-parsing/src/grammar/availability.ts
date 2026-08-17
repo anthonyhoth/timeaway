@@ -4,6 +4,7 @@ import { findMonthRange } from "./months.js";
 import type { FoundPeriod } from "./periods.js";
 import { findFuzzyPeriod, findRelativePeriod } from "./periods.js";
 import { findChronoPeriod } from "./chrono.js";
+import { parseMultiSpan } from "./multi-span.js";
 import { namesLengthWithinPeriod } from "./span-shape.js";
 import { findSubPeriod } from "./subperiods.js";
 
@@ -194,6 +195,14 @@ function findDateReference(
 }
 
 /**
+ * The year the group is planning in, so a bare month in a multi-span list
+ * lands inside the trip rather than against today.
+ */
+function yearHintFor(ctx: ExtractionContext): number | undefined {
+  return ctx.horizonStart ? Number(ctx.horizonStart.slice(0, 4)) : undefined;
+}
+
+/**
  * Which way a message leans, with no date attached.
  *
  * Exported so the underspecified-span path can reuse exactly this reading:
@@ -307,6 +316,29 @@ export function parseAvailabilityMessage(
   else if (isPositive) state = "AVAILABLE";
 
   if (state === null) return null;
+
+  // Several periods in one message — "oct last 2 weeks, nov 1st week and last
+  // week and dec 3rd week". Taking only the first and acknowledging the whole
+  // message was the worst of both: the speaker saw it land, and four fifths of
+  // it had not. Restrictions and roster-pending stay on the single-reference
+  // path below, which knows how to complement and how to hedge.
+  if (!RESTRICTIVE.test(text) && !isUnknown) {
+    const spans = parseMultiSpan(text, ctx.today, yearHintFor(ctx));
+    if (spans) {
+      // Captured so the narrowing survives into the closure below.
+      const settled = state;
+      return {
+        relevant: true,
+        subjectName: null,
+        declarations: spans.map((range) => ({
+          state: settled,
+          start: range.start,
+          end: range.end,
+        })),
+        maxLeaveDays: leaveCap,
+      };
+    }
+  }
 
   // A restriction means everything else in the trip window is ruled out, so
   // the complement has to be stated too. Without a horizon the complement is

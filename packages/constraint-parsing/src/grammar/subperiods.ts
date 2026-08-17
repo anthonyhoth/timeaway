@@ -26,10 +26,21 @@ export function findSubPeriod(
   text: string,
   today: ISODate,
   yearHint?: number,
+  /**
+   * The month to narrow when the text does not name one. Lets "Nov 1st week
+   * and last week" resolve the second half against November rather than
+   * dropping it — the month is stated once and carries.
+   */
+  fallbackWithin?: { start: string; end: string },
 ): FoundPeriod | null {
   // Reuse the month matcher for the month itself, so year roll-forward,
   // horizon hints and abbreviations behave identically everywhere.
-  const month = findMonthRange(stripQualifiers(text), today, yearHint);
+  const named = findMonthRange(stripQualifiers(text), today, yearHint);
+  const month =
+    named ??
+    (fallbackWithin
+      ? { range: fallbackWithin, note: "carried month", start: 0, end: 0 }
+      : null);
   if (!month) return null;
 
   // Only a single whole month can be narrowed. "First week of Nov–Jan" is

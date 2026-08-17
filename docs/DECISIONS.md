@@ -656,6 +656,42 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): several periods in one message
+
+Founder: *"free in oct last 2 weeks, nov 1st week and last week and dec 3rd
+week" should be taking in the availability for 5 weeks in total.*
+
+It was taking two. `findDateReference` returns **one** period, so the parser
+recorded Oct 18–31 and dropped the other three spans without a word.
+
+This is an **under**-claim, and in one respect worse than over-claiming. The
+message still got its ✍, so the speaker watched their availability land and had
+no reason to repeat it — while the card was built from two of the five weeks
+they gave. Over-claiming at least tends to produce a visibly wrong card someone
+argues with.
+
+`parseMultiSpan` splits on the connectives people actually use and resolves
+each segment. Two properties make it work on the real sentence:
+
+  * **The month carries.** "nov 1st week and last week" names November once and
+    means it twice, so an unnamed month inherits the last one resolved. Without
+    this the second half is unreadable and the whole message declines.
+  * **One direction covers the list.** "free" is stated once at the front and
+    applies to every span; the same holds for "cmi".
+
+The safety rule is unchanged and load-bearing: a segment that *looks* like a
+date but cannot be read makes the **whole message decline**. Half a list is not
+a safer answer than none, because nobody can see which half was kept.
+
+Restrictions ("only") and roster-pending stay on the single-reference path,
+which knows how to complement a window and how to hedge. Multi-span also leaves
+single periods alone entirely, so nothing that worked before changes route.
+
+Verified against the founder's sentence: four spans, 14 + 7 + 7 + 7 = **35
+days**, five weeks exactly.
+
+---
+
 ## Decision (2026-08-17): the wizard only heard explicit replies in groups
 
 Founder, live: after re-adding the bot, `/newtrip` asks for the destination in
