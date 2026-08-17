@@ -313,3 +313,38 @@ describe("output density", () => {
     }
   });
 });
+
+/**
+ * A new trip has no window. The three-month default it used to get was
+ * invisible and exclusionary: a group planning for Dec 2027 had every answer
+ * fall outside a range they never chose, and were told no dates worked.
+ */
+describe("a window read off what people said", () => {
+  const withDates = () =>
+    build([
+      person("p1", "Anthony", [
+        { state: "AVAILABLE", start: "2027-12-01", end: "2027-12-31" },
+      ]),
+    ]);
+
+  it("says where the window came from", () => {
+    const card = renderTripCard({
+      ...withDates(),
+      horizonStart: "2027-12-01",
+      horizonEnd: "2027-12-31",
+      horizonDerived: true,
+    });
+    expect(card).toContain("from what you've said");
+    expect(card).toContain("Dec 2027");
+  });
+
+  it("stays quiet about a window the group chose themselves", () => {
+    const card = renderTripCard({
+      ...withDates(),
+      horizonStart: "2027-12-01",
+      horizonEnd: "2027-12-31",
+      horizonDerived: false,
+    });
+    expect(card).not.toContain("from what you've said");
+  });
+});

@@ -15,7 +15,11 @@ import {
   parseTripRequest,
   resolveHorizon,
 } from "@timeaway/constraint-parsing";
-import type { Db, Trip } from "@timeaway/database";
+import type {
+  Db,
+  ParticipantPlanningState,
+  Trip,
+} from "@timeaway/database";
 import {
   addCalendarDeclaration,
   addNlDeclarations,
@@ -52,6 +56,7 @@ import {
   diagnoseParticipants,
   evaluateWindows,
   generateCandidateWindows,
+  deriveHorizon,
   type EvaluatedWindow,
   type PositionedSpan,
   positionSpans,
@@ -112,6 +117,8 @@ interface WizardState {
   step: WizardStep;
   destinations: string[];
   horizonStart?: ISODate;
+  /** Asked and answered with "not sure" — do not ask again, do not invent one. */
+  askedHorizon?: boolean;
   horizonEnd?: ISODate;
   durationMin?: number;
   /** Set when we assumed the range rather than being told it. */
@@ -137,14 +144,6 @@ const DURATION_PROMPT =
 
 /** Long weekend through a full week — used when the organiser can't say yet. */
 const DEFAULT_DURATION = { min: 3, max: 7 };
-
-/** Brief §13's "initial active planning slice" — used when the horizon is
- *  unknown, since windows cannot be generated without one. */
-function defaultHorizon(today: ISODate): { start: ISODate; end: ISODate } {
-  const [y, m, d] = today.split("-").map(Number);
-  const end = new Date(Date.UTC(y!, m! - 1 + 3, d!));
-  return { start: today, end: end.toISOString().slice(0, 10) as ISODate };
-}
 
 const JOIN_MESSAGE =
   "Hey! I'm Timeaway — I help this group find trip dates that actually work.\n\n" +
@@ -666,7 +665,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
   function nextStep(state: WizardState): WizardStep {
     if (!state.askedDestination) return "destination";
-    if (!state.horizonStart) return "horizon";
+    if (!state.horizonStart && !state.askedHorizon) return "horizon";
     if (state.durationMin === undefined) return "duration";
     return "confirm";
   }
@@ -849,14 +848,12 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
 
     if (state.step === "horizon") {
-      const horizon = defaultHorizon(today());
-      state.horizonStart = horizon.start;
-      state.horizonEnd = horizon.end;
+      // No window is invented. A made-up one silently excludes answers nobody
+      // knew were being judged against it — a group planning for Dec 2027 was
+      // told no dates worked, against a range they never chose.
+      state.askedHorizon = true;
       await ctx.reply(
-        `No problem — I'll look at the next 3 months for now (${formatDateRange(
-          horizon.start,
-          horizon.end,
-        )}).`,
+        "No problem — I'll work it out from whatever everyone says.",
         { reply_parameters: { message_id: messageId } },
       );
       await promptNextStep(ctx, state, messageId);
@@ -1545,6 +1542,23 @@ export function createBot(token: string, deps: BotDeps): Bot {
   }
 
   /**
+   * The window this trip is planned across: the one the group set, or — when
+   * they never set one — the span of what they have actually said.
+   *
+   * Deriving beats defaulting because a window made of people's answers cannot
+   * exclude them. The old three-month default could, and did, silently.
+   */
+  function effectiveHorizon(
+    trip: Trip,
+    participants: readonly ParticipantPlanningState[],
+  ): { start: string; end: string } | null {
+    if (trip.horizonStart && trip.horizonEnd) {
+      return { start: trip.horizonStart, end: trip.horizonEnd };
+    }
+    return deriveHorizon(participants, today());
+  }
+
+  /**
    * The options currently on the card, in the order they are numbered.
    *
    * Shared with the card renderer rather than recomputed alongside it: when
@@ -1553,15 +1567,12 @@ export function createBot(token: string, deps: BotDeps): Bot {
    * about which window that is.
    */
   async function currentShortlist(trip: Trip): Promise<EvaluatedWindow[]> {
-    if (
-      trip.horizonStart === null ||
-      trip.horizonEnd === null ||
-      trip.durationMinDays === null ||
-      trip.durationMaxDays === null
-    ) {
+    if (trip.durationMinDays === null || trip.durationMaxDays === null) {
       return [];
     }
     const participants = await loadTripPlanningState(deps.db, trip.id);
+    const horizon = effectiveHorizon(trip, participants);
+    if (!horizon) return [];
     const engineParticipants = participants
       .filter((p) => !p.optedOut)
       .map((p) => ({
@@ -1570,8 +1581,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
         maxLeaveDays: p.maxLeaveDays ?? undefined,
       }));
     const windows = generateCandidateWindows({
-      horizonStart: trip.horizonStart,
-      horizonEnd: trip.horizonEnd,
+      horizonStart: horizon.start,
+      horizonEnd: horizon.end,
       durationMinDays: trip.durationMinDays,
       durationMaxDays: trip.durationMaxDays,
     });
@@ -1593,9 +1604,9 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
     // Windows need a horizon and a duration; without them the card just
     // invites input rather than pretending to compute.
+    const horizon = effectiveHorizon(trip, participants);
     const canCompute =
-      trip.horizonStart !== null &&
-      trip.horizonEnd !== null &&
+      horizon !== null &&
       trip.durationMinDays !== null &&
       trip.durationMaxDays !== null;
 
@@ -1610,8 +1621,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
     const windows = canCompute
       ? generateCandidateWindows({
-          horizonStart: trip.horizonStart!,
-          horizonEnd: trip.horizonEnd!,
+          horizonStart: horizon!.start,
+          horizonEnd: horizon!.end,
           durationMinDays: trip.durationMinDays!,
           durationMaxDays: trip.durationMaxDays!,
         })
@@ -1629,8 +1640,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
       ? diagnoseParticipants({
           participants: engineParticipants,
           windows,
-          horizonStart: trip.horizonStart!,
-          horizonEnd: trip.horizonEnd!,
+          horizonStart: horizon!.start,
+          horizonEnd: horizon!.end,
           publicHolidays: SG_PUBLIC_HOLIDAYS,
         })
       : [];
@@ -1657,8 +1668,9 @@ export function createBot(token: string, deps: BotDeps): Bot {
       diagnostics,
       shortlist,
       shortlistSize,
-      horizonStart: trip.horizonStart,
-      horizonEnd: trip.horizonEnd,
+      horizonStart: horizon?.start ?? null,
+      horizonEnd: horizon?.end ?? null,
+      horizonDerived: !trip.horizonStart && horizon !== null,
     });
 
     let keyboard: InlineKeyboard | undefined;
@@ -1827,16 +1839,14 @@ export function createBot(token: string, deps: BotDeps): Bot {
         .filter(Boolean)
         .join(" "),
     });
-    // Nothing is asked for up front — the defaults are honest placeholders
-    // and conversation reshapes them ("Japan", "next year", "a week").
-    const horizon = defaultHorizon(today());
+    // Nothing is asked for up front, and nothing is assumed about *when*:
+    // the window comes from what the group says, so it can never exclude it.
     const trip = await createTrip(deps.db, {
       organiserUserId: organiser.id,
       destinationCandidates: [],
-      horizonStart: horizon.start,
-      horizonEnd: horizon.end,
       durationMinDays: DEFAULT_DURATION.min,
       durationMaxDays: DEFAULT_DURATION.max,
+      durationDefaulted: true,
       telegramChatId: String(ctx.chat.id),
     });
     await ensureParticipantForTelegramUser(deps.db, trip.id, {

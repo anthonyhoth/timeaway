@@ -656,6 +656,47 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): a new trip has no horizon
+
+Founder: *"A trip plan that is newly created should not have any pre-defined
+horizons."*
+
+Right, and it was the root of yesterday's 2027 failure. Two paths invented a
+window — the wizard's "not sure" answer and the *Start planning* button — both
+using `defaultHorizon`, the next three months. Nobody was told, so a group
+planning for December 2027 had every answer judged against a range they never
+chose, and were shown "no window works". The assumption was invisible, which
+made the engine look broken instead of the default looking wrong.
+
+`defaultHorizon` is deleted. Neither path sets one.
+
+**The window is derived instead.** With none stated, it spans what the group
+has actually said. That is not a weaker default — it is strictly better
+information, because a window made of people's answers **cannot exclude them**.
+The three-month guess could, and did, silently.
+
+Some care in `deriveHorizon`: it ignores anyone sitting the trip out, since
+they constrain nothing and must not stretch the window either; it never drags
+the start into the past; and it returns null when every answer is already past,
+so the card invites input rather than computing against dead dates.
+
+The card **says when the window was inferred** — "Looking at 1–31 Dec 2027 —
+from what you've said". An inferred window is a claim about the group's intent,
+and the group should be able to see it and disagree. A window they set
+themselves needs no such note.
+
+Two supporting changes. `nextStep` needed an `askedHorizon` flag, or an
+unanswered horizon would ask forever now that "not sure" no longer fills it in.
+And trips created by the button are marked `durationDefaulted`, which was
+already true and previously unrecorded.
+
+Verified end to end against the live database rather than in the abstract: a
+trip created with a null horizon, one answer of "1–31 Dec 2027", derives that
+window and produces 135 feasible windows and a five-option shortlist across
+December 2027 — the case that previously reported no dates at all.
+
+---
+
 ## Decision (2026-08-17): the dev loop was shipping stale parsers
 
 Founder reported *"i can do dec next year"* still parsing as all of 2027 —

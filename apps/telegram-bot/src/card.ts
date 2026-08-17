@@ -30,6 +30,12 @@ export interface CardInput {
   /** The trip's window, so leave figures can be qualified past our data. */
   horizonStart?: string | null;
   horizonEnd?: string | null;
+  /**
+   * True when nobody set a window and this one was read off what people said.
+   * Shown, because an inferred window is a claim about the group's intent and
+   * they should be able to see and correct it.
+   */
+  horizonDerived?: boolean;
   /** Set once the organiser has confirmed; renders the settled state. */
   selected?: { start: string; end: string } | null;
 }
@@ -230,6 +236,11 @@ function notedLines(
 
 function header(input: CardInput): string[] {
   const lines = [formatDestinations(input.destinations)];
+  if (input.horizonDerived && input.horizonStart && input.horizonEnd) {
+    lines.push(
+      `Looking at ${formatDateRange(input.horizonStart, input.horizonEnd)} — from what you've said`,
+    );
+  }
   if (input.durationMinDays !== null && input.durationMaxDays !== null) {
     // Marked when we assumed it, so nobody mistakes our guess for the group's
     // decision — and so it reads as something they are invited to change.
