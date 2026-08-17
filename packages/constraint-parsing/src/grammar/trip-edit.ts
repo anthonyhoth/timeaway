@@ -1,6 +1,7 @@
 import type { ISODate } from "@timeaway/shared";
 import type { DestinationEdit } from "./destination.js";
 import { parseDestinationEdit } from "./destination.js";
+import { parseTripRequest } from "./trip-request.js";
 import { resolveHorizon } from "./horizon.js";
 import type { DateRange } from "./periods.js";
 
@@ -37,6 +38,19 @@ export interface TripEdit {
 const ABOUT_THEMSELVES =
   /\b(?:i|i'?m|im|my|me|myself|i'?ve|ive)\b[^.!?]{0,32}?\b(?:free|avail(?:able)?|can'?t|cannot|cant|cmi|cbb|bo eng|busy|unavailable|no leave|leave|off|away|overseas?)\b/i;
 
+/**
+ * Planning the trip out loud — "we want to go Hainan this year end", "planning
+ * on this year end", "we can do December".
+ *
+ * These carry no edit verb, so nothing matched them, and a group stating their
+ * window in the most natural way possible was met with silence. The tell is
+ * that they are about *the trip*: first-person plural, or an impersonal
+ * planning verb. First-person singular is someone's own availability and is
+ * excluded by ABOUT_THEMSELVES above.
+ */
+const GROUP_PLAN =
+  /\b(?:we|us|let'?s|lets)\b|\b(?:planning|plan on|planning on|thinking of|thinking about|looking at|aiming for|aim for|hoping for)\b/i;
+
 const EDIT_WORD =
   /\b(?:also|too|as well|add|another|what about|how about|consider|include|instead|rather than|change (?:it )?to|switch to|actually|make it|push (?:it )?to|move (?:it )?to|drop|remove|cross off|forget|scrap|is out|are out|no longer|not)\b/i;
 
@@ -71,18 +85,48 @@ export function parseTripEdit(
   rawText: string,
   today: ISODate,
   currentDestinations: readonly string[],
+  options: {
+    /**
+     * True while the trip has no window at all. A bare period is then almost
+     * certainly the answer to "when?" — the group has just been asked, and
+     * there is nothing for it to contradict. Once a window exists, changing it
+     * needs clearer intent than a passing mention of a month.
+     */
+     horizonUnset?: boolean;
+  } = {},
 ): TripEdit | null {
   const text = rawText.trim();
-  if (!text || !EDIT_WORD.test(text)) return null;
   if (ABOUT_THEMSELVES.test(text)) return null;
 
-  const destination = parseDestinationEdit(text, today, currentDestinations);
+  const stated =
+    EDIT_WORD.test(text) ||
+    GROUP_PLAN.test(text) ||
+    (options.horizonUnset === true && resolveHorizon(text, today) !== null);
+  if (!stated) return null;
+
+  const planning = GROUP_PLAN.test(text);
+
+  let destination = parseDestinationEdit(text, today, currentDestinations);
+
+  // "We want to go Hainan this year end" names a place with no edit word, so
+  // the op detector finds nothing. Planning aloud with no destination yet is
+  // an ADD, not a rewrite — the weakest claim that fits, so it needs no
+  // organiser approval and cannot silently discard an existing choice.
+  if (!destination && planning && currentDestinations.length === 0) {
+    const named = parseTripRequest(text, today).destinations;
+    if (named.length > 0) destination = { op: "ADD", destinations: named };
+  }
+
   const duration = findDuration(text);
 
-  // A horizon edit only counts when no place was named — "Korea instead"
-  // moves the destination, not the dates.
+  // A place and a period in one sentence is the normal shape of planning
+  // aloud, so both are taken. For a terse edit the older rule still holds:
+  // "Korea instead" moves the destination, not the dates, and reading a
+  // horizon out of it would be inventing one.
   const horizon =
-    !destination && !duration ? (resolveHorizon(text, today) ?? undefined) : undefined;
+    planning || (!destination && !duration)
+      ? (resolveHorizon(text, today) ?? undefined)
+      : undefined;
 
   if (!destination && !duration && !horizon) return null;
 

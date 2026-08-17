@@ -656,6 +656,48 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): a group stating its plan was talking to nobody
+
+Founder, from a live group: *"we want to go Hainan this year end"*, *"planning
+on this year end"*, *"this year end"*, *"end of this year"*, *"whole of
+December"* — none of them parsed.
+
+Tracing all five showed the parsers were mostly fine and the **routing** was
+not. `resolveHorizon` already understood four of the five; nothing carried the
+answer to the trip. `parseTripEdit` required an edit word — "instead", "make
+it", "push to" — and a group stating its plan uses none of them. Availability
+correctly declined, since none of it is about a person.
+
+So the layer that was missing is **planning aloud**: first-person plural, or an
+impersonal planning verb ("we want to go", "planning on", "we can do",
+"thinking of", "aiming for"). First-person singular stays out, because that is
+someone's own availability and `ABOUT_THEMSELVES` already excludes it.
+
+Three judgements inside that:
+
+  * **A place and a period in one sentence are both taken.** The old rule kept
+    them exclusive so "Korea instead" would not be read as a date. That still
+    holds for terse edits; planning aloud names both by nature, and dropping
+    "Hainan" from "we want to go Hainan this year end" was pure loss.
+  * **A first destination is an ADD, not a REPLACE** — the weakest claim that
+    fits. It needs no organiser approval and cannot discard a choice the group
+    already made.
+  * **A bare period only counts while the trip has no window.** "Whole of
+    December" is the answer to a question just asked; once a window exists, a
+    passing mention of a month is not enough to move it. This is the payoff of
+    the horizonless-trip change: the absence of a window is now meaningful
+    state, and the parser can use it.
+
+Two smaller repairs found on the way. `"end of this year"` matched nothing
+while `"year end"` worked — the most natural phrasing was the missing one. And
+the destination filler set leaked again: `"we want to go Hainan this year end"`
+produced a place called **"Hainan This"**, `"whole of December"` one called
+**"Whole"**. Period words are now filler. That set has now leaked five times;
+each fix is one word, and the pattern is that any word which can precede or
+follow a place name eventually appears as one.
+
+---
+
 ## Decision (2026-08-17): audit — why the bot went silent after a re-add
 
 Founder: re-adding the bot produced no greeting and no response to commands.

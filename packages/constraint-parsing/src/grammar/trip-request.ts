@@ -34,6 +34,12 @@ const FILLER = new Set([
   "rather", "than", "change", "switch", "actually", "drop", "remove", "cross",
   "off", "forget", "scrap", "no", "not", "longer", "out", "is", "are", "it",
   "what", "how", "about", "list", "sure", "try", "trying", "lets", "let",
+  // Period words: without these "Hainan this year end" yields a place called
+  // "Hainan This", and a bare "whole of December" one called "Whole".
+  "this", "that", "these", "those", "whole", "end", "start", "year", "years",
+  "month", "months", "week", "weeks", "next", "last", "coming", "can", "do",
+  "doing", "done", "there", "here", "then", "when", "aim", "aiming", "look",
+  "looking", "hoping", "hope",
   "can", "cannot", "cant", "do", "does", "doing", "done", "shall", "should",
   "push", "move", "moving", "make", "making", "long", "short", "shorter",
   "longer", "extend", "shorten",

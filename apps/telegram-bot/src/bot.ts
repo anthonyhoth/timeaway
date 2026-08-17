@@ -1258,7 +1258,11 @@ export function createBot(token: string, deps: BotDeps): Bot {
     // person's own dates is never mistaken for a change to the plan.
     if (!parseAvailabilityMessage(text, extractionCtx)) {
       const current = trip.destinationCandidates ?? [];
-      const edit = parseTripEdit(text, today(), current);
+      // With no window set, a bare period ("whole of December") is the answer
+      // to a question the group has just been asked, so it is taken as one.
+      const edit = parseTripEdit(text, today(), current, {
+        horizonUnset: trip.horizonStart === null || trip.horizonEnd === null,
+      });
       if (edit) {
         const isOrganiser = await isTripOrganiser(trip, ctx.from!);
         if (!edit.destructive || isOrganiser) {

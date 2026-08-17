@@ -33,7 +33,9 @@ const PERIODS: {
   resolve: (year: number, match: RegExpExecArray) => DateRange;
 }[] = [
   {
-    pattern: /\b(?:year[-\s]?end|end[-\s]of[-\s](?:the[-\s])?year|eoy)\b/i,
+    // "end of this year" was missing, so the most natural way to say it got
+    // nothing at all while "year end" worked.
+    pattern: /\b(?:year[-\s]?end|end[-\s]of[-\s](?:the[-\s]|this[-\s])?year|eoy)\b/i,
     label: "year end",
     resolve: (y) => ({ start: iso(y, 11, 15), end: iso(y + 1, 1, 5) }),
   },
