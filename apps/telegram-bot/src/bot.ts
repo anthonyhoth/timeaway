@@ -559,14 +559,21 @@ export function createBot(token: string, deps: BotDeps): Bot {
     if (ctx.message.text.startsWith("/")) return next();
 
     const state = wizards.get(keyOf(ctx.chat.id, ctx.from.id));
-    const isWizardReply =
-      state !== undefined &&
-      (ctx.chat.type === "private" ||
-        ctx.message.reply_to_message?.from?.id === ctx.me.id);
+    if (state !== undefined) {
+      const repliedToUs =
+        ctx.chat.type === "private" ||
+        ctx.message.reply_to_message?.from?.id === ctx.me.id;
 
-    if (isWizardReply) {
-      await handleWizardStep(ctx, state);
-      return;
+      // ForceReply opens the reply box, but in a group people routinely type
+      // in the main one instead — and the answer was then dropped, leaving the
+      // bot mute after its own question. A plain message is accepted too, but
+      // only when it actually answers the step being asked: in a live group
+      // the organiser is also talking about other things, and swallowing that
+      // would be its own bug.
+      if (repliedToUs || answersStep(state, ctx.message.text)) {
+        await handleWizardStep(ctx, state);
+        return;
+      }
     }
 
     if (isGroup(ctx)) {
@@ -794,6 +801,66 @@ export function createBot(token: string, deps: BotDeps): Bot {
       { reply_parameters: { message_id: messageId } },
     );
     await finaliseTrip(ctx, state, messageId);
+  }
+
+  /**
+   * Words that carry no answer on their own. A message made entirely of them
+   * is noise however place-like it parses — "ok lah" otherwise becomes a trip
+   * to Ok Lah, "hahaha" a trip to Hahaha.
+   *
+   * Guards only the plain-message path. Replying to the question still accepts
+   * anything, because the destination parser has to allow places no curated
+   * list of ours would hold.
+   */
+  const CHATTER_WORDS = new Set([
+    "ha", "haha", "hahaha", "hahahaha", "hehe", "hehehe", "lol", "lmao", "rofl",
+    "ok", "okay", "okok", "k", "kk", "yes", "no", "nope", "ya", "yah", "yeah",
+    "sure", "nice", "cool", "wait", "hmm", "hmmm", "erm", "umm", "eh", "ah",
+    "ar", "sia", "lah", "leh", "lor", "hor", "meh", "liao", "already", "alamak",
+    "shiok", "wah", "omg", "same", "true", "agree", "noted", "done", "thanks",
+    "thx", "ty", "bro", "sis", "guys", "man", "yup", "yep", "nah",
+  ]);
+
+  function isAllChatter(text: string): boolean {
+    const words = text
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+    return words.length > 0 && words.every((w) => CHATTER_WORDS.has(w));
+  }
+
+  /**
+   * Could this message be the answer to the question we just asked?
+   *
+   * A dry run of the step's own parser, so the two can never disagree about
+   * what counts as an answer. Anything it declines falls through to ambient
+   * capture rather than drawing "Sorry, I didn't catch that" at someone who
+   * was talking to their friends.
+   */
+  function answersStep(state: WizardState, rawText: string): boolean {
+    const text = rawText.trim();
+    if (!text || text.startsWith("/")) return false;
+    if (isUnknownAnswer(text)) return true;
+
+    switch (nextStep(state)) {
+      case "destination":
+        // The destination parser is permissive on purpose — people name places
+        // no list of ours will contain. That is right when they have replied
+        // to the question, and wrong here, where a stray "hahaha" would become
+        // a trip to Hahaha. An explicit reply still accepts anything.
+        return (
+          text.toLowerCase() === "skip" ||
+          (!isAllChatter(text) &&
+            parseTripRequest(text, today()).destinations.length > 0)
+        );
+      case "horizon":
+        return resolveHorizon(text, today()) !== null;
+      case "duration":
+        return parseDurationRange(text) !== null;
+      default:
+        return false;
+    }
   }
 
   async function handleWizardStep(

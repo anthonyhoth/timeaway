@@ -656,6 +656,39 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): the wizard only heard explicit replies in groups
+
+Founder, live: after re-adding the bot, `/newtrip` asks for the destination in
+the group and then ignores every answer.
+
+The wizard accepted a group answer only when
+`reply_to_message.from.id === ctx.me.id` — an explicit reply to its own
+message. ForceReply opens the reply box, but in a group people routinely type
+in the main one instead, and that answer was dropped. Worse, it was dropped
+*silently*: no trip exists yet, so ambient capture had nothing to match either,
+and the bot sat mute after its own question. Nothing in the logs, because
+nothing failed.
+
+A plain message is now accepted too — but only when it **answers the step being
+asked**, checked by a dry run of that step's own parser, so the two can never
+disagree about what counts as an answer. Anything it declines falls through to
+ambient capture rather than drawing "Sorry, I didn't catch that" at someone
+talking to their friends. That distinction is the whole point: in a live group
+the organiser is also having a conversation, and a wizard that swallowed all of
+it would be its own bug.
+
+**One asymmetry worth stating.** The destination parser is permissive on
+purpose — people name places no curated list of ours will ever hold. That is
+right for an explicit reply and wrong for a stray message, where "hahaha"
+becomes a trip to Hahaha and "ok lah" a trip to Ok Lah. So the plain-message
+path screens messages composed entirely of noise words first. Replying to the
+question still bypasses the screen and accepts anything.
+
+The horizon and duration steps need no such guard: their parsers already
+decline chatter, which is why the screen sits only where the permissiveness is.
+
+---
+
 ## Decision (2026-08-17): the context layer — remembering what we asked
 
 Founder corrected my reading: in *"I'm not free 2 weeks in nov"* → *"the middle
