@@ -61,3 +61,57 @@ describe("TripPage", () => {
     expect(render(view())).toContain("https://t.me/TimeawayBot");
   });
 });
+
+/**
+ * Removing the bot archives the trip rather than deleting it, and the re-add
+ * message tells the group the page is still readable. That promise only holds
+ * if the page stops behaving like a live board: an archived trip that still
+ * says "Planning in progress" and asks people to speak up in the group chat is
+ * pointing them at a chat the bot has left.
+ */
+describe("an archived trip reads as a record, not a live board", () => {
+  const archived = () => render(view({ status: "ARCHIVED" }));
+
+  it("says the trip is closed", () => {
+    const page = archived();
+    expect(page).toContain("Trip closed");
+    expect(page).not.toContain("Planning in progress");
+  });
+
+  it("explains why, without blaming anyone", () => {
+    expect(archived()).toContain("no longer being planned");
+    expect(archived()).toContain("removed from the group chat");
+  });
+
+  it("stops asking for answers there is nowhere to put", () => {
+    expect(archived()).not.toContain("this page updates");
+    expect(archived()).toContain("closed before anyone said");
+  });
+
+  it("leaves a live trip alone", () => {
+    const live = render(view());
+    expect(live).toContain("Planning in progress");
+    expect(live).not.toContain("no longer being planned");
+    expect(live).toContain("this page updates");
+  });
+
+  it("still keeps what people said", () => {
+    // Archiving exists so the record survives; hiding it would defeat it.
+    const page = render(
+      view({
+        status: "ARCHIVED",
+        participants: [
+          {
+            firstName: "Farah",
+            status: "AVAILABLE",
+            optedOut: false,
+            maxLeaveDays: 3,
+            declarations: [],
+            dayCounts: { available: 0, maybe: 0, unavailable: 0, unknown: 0 },
+          } as never,
+        ],
+      }),
+    );
+    expect(page).toContain("Farah");
+  });
+});

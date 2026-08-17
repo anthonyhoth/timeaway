@@ -656,6 +656,32 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): an archived trip's page reads as a record, not a board
+
+Founder confirmed archiving over deletion. Following that through exposed a
+promise we were not keeping: the re-add message tells the group the closed trip
+"is still readable" at its link, and the page it pointed at still said
+**"Planning in progress"** and invited people to *"say when you're free in the
+group chat and this page updates"* — pointing them at a chat the bot had just
+been removed from, where nothing they said could be recorded.
+
+The page now has three states rather than two. Archived trips say **Trip
+closed**, carry a short band explaining that Timeaway was removed from the
+group and that everything below is what had been worked out by then, and stop
+asking for input there is nowhere to put.
+
+Diagnostics are hidden once closed. Every one of them ends in an instruction —
+"move the trip", "shorten it", "plan this one without Farah" — and there is no
+next step to take. Options and answers stay, relabelled from "Options so far"
+to "Options on the table", because keeping the record is the entire reason for
+archiving rather than deleting.
+
+Caught by rendering the page rather than trusting the tests: the first check
+still showed the live copy, because the bot serves the web package from `dist`
+and it had not been rebuilt. The tests were green throughout.
+
+---
+
 ## Decision (2026-08-17): removing the bot ends the trip in that chat
 
 Founder, for testing: removing and re-adding the bot should start the group

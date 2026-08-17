@@ -97,6 +97,11 @@ export function TripPage({
   const destination = formatDestinations(view.destinationCandidates);
   const settled =
     view.status === "DATE_SELECTED" && view.selectedStart && view.selectedEnd;
+  // The bot was removed from the chat, so this page is now a record rather
+  // than a live board. Everything already said is kept — that is the whole
+  // point of archiving instead of deleting — but nothing here may invite an
+  // answer, because there is no longer anywhere for one to go.
+  const closed = view.status === "ARCHIVED";
   // Same rule as the bot card: every window is technically feasible before
   // anyone answers, so calling the first one a match would be misleading.
   const hasAnyDates = view.participants.some((p) => p.declarations.length > 0);
@@ -121,7 +126,7 @@ export function TripPage({
         <p
           style={`font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${BRAND.layover}`}
         >
-          {settled ? "Dates confirmed" : "Planning in progress"}
+          {settled ? "Dates confirmed" : closed ? "Trip closed" : "Planning in progress"}
         </p>
         <h1 style="font-size:clamp(32px,5.4vw,46px);margin:12px 0 8px">
           {destination}
@@ -135,6 +140,23 @@ export function TripPage({
             : ""}
         </p>
       </section>
+
+      {closed && (
+        <section class="wrap" style="max-width:640px;padding:8px 0">
+          <div
+            class="card"
+            style={`border-radius:16px;padding:18px 20px;border-left:4px solid ${BRAND.layover}`}
+          >
+            <p style="font-weight:600;font-size:16px">
+              This trip is no longer being planned.
+            </p>
+            <p class="muted" style="font-size:15px;margin-top:6px">
+              Timeaway was removed from the group chat. Everything below is what
+              had been worked out by then.
+            </p>
+          </div>
+        </section>
+      )}
 
       <section class="wrap" style="max-width:640px;padding:24px 0 8px">
         {settled ? (
@@ -154,17 +176,22 @@ export function TripPage({
             window={best}
             view={view}
             headline={
-              ranked.feasible.length > 0
-                ? "Best match so far"
-                : "Closest — doesn’t work for everyone yet"
+              closed
+                ? "Where it got to"
+                : ranked.feasible.length > 0
+                  ? "Best match so far"
+                  : "Closest — doesn’t work for everyone yet"
             }
           />
         ) : (
           <div class="card" style="border-radius:24px;padding:32px;text-align:center">
-            <h2 style="font-size:24px;margin-bottom:10px">No dates yet</h2>
+            <h2 style="font-size:24px;margin-bottom:10px">
+              {closed ? "No dates were shared" : "No dates yet"}
+            </h2>
             <p class="muted" style="font-size:16px">
-              Nobody has shared dates yet. Say when you’re free in the group
-              chat and this page updates.
+              {closed
+                ? "This trip closed before anyone said when they were free."
+                : "Nobody has shared dates yet. Say when you’re free in the group chat and this page updates."}
             </p>
             {view.participants.some((p) => p.maxLeaveDays !== null) && (
               <div style="margin-top:20px;text-align:left">
@@ -194,7 +221,11 @@ export function TripPage({
           <p
             style={`font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${BRAND.jetlag};margin-bottom:12px`}
           >
-            {view.shortlistSize <= 3 ? "Narrowed to these" : "Options so far"}
+            {closed
+              ? "Options on the table"
+              : view.shortlistSize <= 3
+                ? "Narrowed to these"
+                : "Options so far"}
           </p>
           <div style="display:grid;gap:10px">
             {(shortlist ?? []).slice(1).map((w) => (
@@ -214,7 +245,8 @@ export function TripPage({
         </section>
       )}
 
-      {diagnostics.length > 0 && (
+      {/* Every diagnostic ends in "do this next". There is no next. */}
+      {!closed && diagnostics.length > 0 && (
         <section class="wrap" style="max-width:640px;padding:18px 0">
           <p
             style={`font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${BRAND.jetlag};margin-bottom:12px`}
