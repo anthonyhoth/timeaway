@@ -16,6 +16,8 @@ export interface CardInput {
   destinations: string[];
   durationMinDays: number | null;
   durationMaxDays: number | null;
+  /** True when the duration was assumed rather than chosen. */
+  durationDefaulted?: boolean;
   ranked: RankedWindows;
   participants: readonly ParticipantPlanningState[];
   tripUrl: string;
@@ -78,7 +80,7 @@ function participantLines(
 
   if (includeCounts && window.counts.available > 0) {
     lines.push(
-      `✅ ${window.counts.available} of ${travellers(participants).length} can make it`,
+      `${window.counts.available} of ${travellers(participants).length} can make it`,
     );
   }
 
@@ -88,83 +90,124 @@ function participantLines(
     .filter((p) => p.status === "MAYBE" && p.dayCounts.unknown > 0)
     .map((p) => nameOf(participants, p.participantId));
   if (pending.length > 0) {
-    lines.push(`❓ ${joinNames(pending)} — waiting on roster`);
+    lines.push(`${joinNames(pending)} — roster not out`);
   }
 
   const maybe = window.participants
     .filter((p) => p.status === "MAYBE" && p.dayCounts.unknown === 0)
     .map((p) => nameOf(participants, p.participantId));
   if (maybe.length > 0) {
-    lines.push(`🤔 ${joinNames(maybe)} — maybe`);
+    lines.push(`${joinNames(maybe)} — maybe`);
   }
 
   const blocked = window.participants
     .filter((p) => p.status === "UNAVAILABLE")
     .map((p) => nameOf(participants, p.participantId));
   if (blocked.length > 0) {
-    lines.push(`❌ ${joinNames(blocked)} can't make it`);
+    lines.push(`${joinNames(blocked)} — can't make it`);
   }
 
   const silent = window.participants
     .filter((p) => p.status === "UNANSWERED")
     .map((p) => nameOf(participants, p.participantId));
   if (silent.length > 0) {
-    lines.push(`💬 ${joinNames(silent)} — no dates yet`);
+    lines.push(`${joinNames(silent)} — no dates yet`);
   }
 
   if (includeCounts) {
     lines.push(
-      `🗓 ${window.leaveDays} leave ${window.leaveDays === 1 ? "day" : "days"}`,
+      `${window.leaveDays} leave ${window.leaveDays === 1 ? "day" : "days"}`,
     );
   }
   return lines;
 }
 
 /**
- * Mismatches that no choice of dates can fix, each stated with the two ways
- * out: reshape the trip, or go ahead without that person. The group decides —
- * Timeaway only makes the trade-off visible.
+ * Mismatches that no choice of dates can fix.
+ *
+ * Grouped by kind rather than listed per person: three people blocked by the
+ * same thing used to produce three near-identical warnings and three warning
+ * icons, which reads as three separate problems. One heading names everyone,
+ * each person contributes only what is specific to them, and the way out is
+ * stated once — the trade-off is the group's to make, so it has to be legible
+ * at a glance.
  */
 function diagnosticLines(input: CardInput): string[] {
+  const diagnostics = input.diagnostics ?? [];
+  if (diagnostics.length === 0) return [];
+
+  const name = (id: string) => nameOf(input.participants, id);
   const lines: string[] = [];
 
-  for (const d of input.diagnostics ?? []) {
-    const name = nameOf(input.participants, d.participantId);
-
-    if (d.kind === "ANSWERED_OUTSIDE_HORIZON") {
-      const said = d.statedRanges
-        .map((r) => formatDateRange(r.start, r.end))
-        .join(", ");
-      lines.push(
-        `⚠️ ${name} answered for ${said} — outside this trip.`,
-        `   Move the dates, or plan this one without ${name}.`,
-      );
-      continue;
+  /**
+   * One heading, one detail per person, one remedy. With a single person the
+   * detail is folded into the heading — repeating their name three times to
+   * say one thing is exactly the noise this avoids.
+   */
+  const section = (
+    heading: (who: string) => string,
+    details: { who: string; detail: string }[],
+    remedy: (who: string) => string,
+  ) => {
+    const who = joinNames(details.map((d) => d.who));
+    if (lines.length > 0) lines.push("");
+    if (details.length === 1 && details[0]!.detail) {
+      lines.push(`⚠️ ${heading(who)} — ${details[0]!.detail}`);
+    } else {
+      lines.push(`⚠️ ${heading(who)}`);
+      for (const d of details.filter((d) => d.detail)) {
+        lines.push(`${d.who} — ${d.detail}`);
+      }
     }
+    lines.push(remedy(who));
+  };
 
-    if (d.kind === "BLOCKED_ACROSS_HORIZON") {
-      const elsewhere = d.availableElsewhere
-        .map((r) => formatDateRange(r.start, r.end))
-        .join(", ");
-      lines.push(
-        elsewhere
-          ? `⚠️ ${name} can't do these dates, but said ${elsewhere} works.`
-          : `⚠️ ${name} can't do any of these dates.`,
-        elsewhere
-          ? `   Move the trip to ${elsewhere}, or plan this one without ${name}.`
-          : `   Widen the dates, or plan this one without ${name}.`,
-      );
-      continue;
-    }
+  const ranges = (rs: readonly { start: string; end: string }[]) =>
+    rs.map((r) => formatDateRange(r.start, r.end)).join(", ");
 
-    const affordable =
-      d.longestAffordableDays > 0
-        ? `${name} could manage about ${d.longestAffordableDays} days`
-        : `${name} can't spare leave for this`;
-    lines.push(
-      `⚠️ ${name} has ${d.maxLeaveDays} leave ${d.maxLeaveDays === 1 ? "day" : "days"};` +
-        ` the shortest option here costs ${d.cheapestWindowLeave}.`,
-      `   ${affordable} — shorten the trip, or keep this one and plan a short trip with ${name} separately.`,
+  const outside = diagnostics.filter((d) => d.kind === "ANSWERED_OUTSIDE_HORIZON");
+  if (outside.length > 0) {
+    section(
+      (who) => `${who} answered for dates outside this trip`,
+      outside.map((d) => ({
+        who: name(d.participantId),
+        detail: ranges(d.statedRanges),
+      })),
+      (who) => `Move the trip, or plan this one without ${who}.`,
+    );
+  }
+
+  const blocked = diagnostics.filter((d) => d.kind === "BLOCKED_ACROSS_HORIZON");
+  if (blocked.length > 0) {
+    const details = blocked.map((d) => ({
+      who: name(d.participantId),
+      detail:
+        d.availableElsewhere.length > 0
+          ? `free ${ranges(d.availableElsewhere)}`
+          : "",
+    }));
+    const elsewhere = details.filter((d) => d.detail).map((d) => d.detail);
+    section(
+      (who) => `${who} can't do any of these dates`,
+      details,
+      (who) =>
+        elsewhere.length > 0
+          ? `Shift the dates, or go without ${who}.`
+          : `Widen the dates, or go without ${who}.`,
+    );
+  }
+
+  const leave = diagnostics.filter((d) => d.kind === "LEAVE_CAP_BLOCKS_ALL");
+  if (leave.length > 0) {
+    section(
+      (who) => `${who} can't spare the leave`,
+      leave.map((d) => ({
+        who: name(d.participantId),
+        detail:
+          `${d.maxLeaveDays} ${d.maxLeaveDays === 1 ? "day" : "days"}, ` +
+          `shortest option costs ${d.cheapestWindowLeave}`,
+      })),
+      (who) => `Shorten the trip, or plan a shorter one with ${who} separately.`,
     );
   }
 
@@ -188,7 +231,10 @@ function notedLines(
 function header(input: CardInput): string[] {
   const lines = [formatDestinations(input.destinations)];
   if (input.durationMinDays !== null && input.durationMaxDays !== null) {
-    lines[0] += ` · ${formatDuration(input.durationMinDays, input.durationMaxDays)}`;
+    // Marked when we assumed it, so nobody mistakes our guess for the group's
+    // decision — and so it reads as something they are invited to change.
+    const assumed = input.durationDefaulted ? " (default)" : "";
+    lines[0] += ` · ${formatDuration(input.durationMinDays, input.durationMaxDays)}${assumed}`;
   }
   return lines;
 }
@@ -262,10 +308,13 @@ export function renderTripCard(input: CardInput): string {
         "",
       );
       options.forEach((w, index) => {
-        const pending = w.counts.rosterPending > 0 ? ` · ${w.counts.rosterPending} roster pending` : "";
+        const pending =
+          w.counts.rosterPending > 0 ? ` · ${w.counts.rosterPending} pending` : "";
         lines.push(
-          `${index + 1}. ${formatDateRange(w.window.start, w.window.end)} · ${w.window.days} days`,
-          `    ✅ ${w.counts.available} of ${travellers(input.participants).length} in · ${w.leaveDays} leave${pending}`,
+          `${index + 1}. ${formatDateRange(w.window.start, w.window.end)} · ` +
+            `${w.window.days}d · ` +
+            `${w.counts.available}/${travellers(input.participants).length} · ` +
+            `${w.leaveDays} leave${pending}`,
         );
       });
       const attention = attentionLines(options[0]!, input.participants);

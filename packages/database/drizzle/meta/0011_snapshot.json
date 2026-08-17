@@ -1,0 +1,806 @@
+{
+  "id": "b642aeea-d3aa-4433-acdf-c8de3d02adb8",
+  "prevId": "a2a74ddf-90ce-4522-95b3-e0f7136348e1",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.user_identities": {
+      "name": "user_identities",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "identity_provider",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "user_identities_provider_external_id": {
+          "name": "user_identities_provider_external_id",
+          "columns": [
+            {
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "external_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "user_identities_user_id_users_id_fk": {
+          "name": "user_identities_user_id_users_id_fk",
+          "tableFrom": "user_identities",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.trips": {
+      "name": "trips",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "short_code": {
+          "name": "short_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organiser_id": {
+          "name": "organiser_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destination_candidates": {
+          "name": "destination_candidates",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destination": {
+          "name": "destination",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "trip_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'IDEA'"
+        },
+        "horizon_start": {
+          "name": "horizon_start",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "horizon_end": {
+          "name": "horizon_end",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_min_days": {
+          "name": "duration_min_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_max_days": {
+          "name": "duration_max_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_defaulted": {
+          "name": "duration_defaulted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "selected_start": {
+          "name": "selected_start",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "selected_end": {
+          "name": "selected_end",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "telegram_chat_id": {
+          "name": "telegram_chat_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shortlist_size": {
+          "name": "shortlist_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "ambient_paused": {
+          "name": "ambient_paused",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "card_message_id": {
+          "name": "card_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "trips_telegram_chat_id": {
+          "name": "trips_telegram_chat_id",
+          "columns": [
+            {
+              "expression": "telegram_chat_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "trips_organiser_id_users_id_fk": {
+          "name": "trips_organiser_id_users_id_fk",
+          "tableFrom": "trips",
+          "tableTo": "users",
+          "columnsFrom": [
+            "organiser_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "trips_short_code_unique": {
+          "name": "trips_short_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "short_code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.participants": {
+      "name": "participants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "trip_id": {
+          "name": "trip_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invite_name": {
+          "name": "invite_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role": {
+          "name": "role",
+          "type": "participant_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PARTICIPANT'"
+        },
+        "opted_out": {
+          "name": "opted_out",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "max_leave_days": {
+          "name": "max_leave_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_leave_days_source_text": {
+          "name": "max_leave_days_source_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_leave_days_set_at": {
+          "name": "max_leave_days_set_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "participants_trip_user": {
+          "name": "participants_trip_user",
+          "columns": [
+            {
+              "expression": "trip_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"participants\".\"user_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "participants_trip_id_trips_id_fk": {
+          "name": "participants_trip_id_trips_id_fk",
+          "tableFrom": "participants",
+          "tableTo": "trips",
+          "columnsFrom": [
+            "trip_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "participants_user_id_users_id_fk": {
+          "name": "participants_user_id_users_id_fk",
+          "tableFrom": "participants",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "participants_identity_present": {
+          "name": "participants_identity_present",
+          "value": "\"participants\".\"user_id\" is not null or \"participants\".\"invite_name\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.availability_declarations": {
+      "name": "availability_declarations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "participant_id": {
+          "name": "participant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "declared_availability_state",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "availability_source",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "original_text": {
+          "name": "original_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "availability_declarations_participant": {
+          "name": "availability_declarations_participant",
+          "columns": [
+            {
+              "expression": "participant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "availability_declarations_participant_id_participants_id_fk": {
+          "name": "availability_declarations_participant_id_participants_id_fk",
+          "tableFrom": "availability_declarations",
+          "tableTo": "participants",
+          "columnsFrom": [
+            "participant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "availability_declarations_range_valid": {
+          "name": "availability_declarations_range_valid",
+          "value": "\"availability_declarations\".\"end_date\" >= \"availability_declarations\".\"start_date\""
+        },
+        "availability_declarations_nl_has_text": {
+          "name": "availability_declarations_nl_has_text",
+          "value": "\"availability_declarations\".\"source\" <> 'NATURAL_LANGUAGE' or \"availability_declarations\".\"original_text\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.waitlist_signups": {
+      "name": "waitlist_signups",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'landing'"
+        },
+        "trip_short_code": {
+          "name": "trip_short_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "waitlist_email_unique": {
+          "name": "waitlist_email_unique",
+          "columns": [
+            {
+              "expression": "lower(\"email\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.participant_notes": {
+      "name": "participant_notes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "participant_id": {
+          "name": "participant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "note_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "original_text": {
+          "name": "original_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "participant_notes_participant_id_participants_id_fk": {
+          "name": "participant_notes_participant_id_participants_id_fk",
+          "tableFrom": "participant_notes",
+          "tableTo": "participants",
+          "columnsFrom": [
+            "participant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.analytics_events": {
+      "name": "analytics_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "event": {
+          "name": "event",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trip_id": {
+          "name": "trip_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chat_id": {
+          "name": "chat_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "properties": {
+          "name": "properties",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "analytics_events_event": {
+          "name": "analytics_events_event",
+          "columns": [
+            {
+              "expression": "event",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "analytics_events_created": {
+          "name": "analytics_events_created",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.identity_provider": {
+      "name": "identity_provider",
+      "schema": "public",
+      "values": [
+        "telegram",
+        "email",
+        "apple",
+        "google"
+      ]
+    },
+    "public.trip_status": {
+      "name": "trip_status",
+      "schema": "public",
+      "values": [
+        "IDEA",
+        "PLANNING",
+        "MATCH_FOUND",
+        "DATE_SELECTED",
+        "ARCHIVED"
+      ]
+    },
+    "public.participant_role": {
+      "name": "participant_role",
+      "schema": "public",
+      "values": [
+        "ORGANISER",
+        "PARTICIPANT"
+      ]
+    },
+    "public.availability_source": {
+      "name": "availability_source",
+      "schema": "public",
+      "values": [
+        "CALENDAR",
+        "NATURAL_LANGUAGE"
+      ]
+    },
+    "public.declared_availability_state": {
+      "name": "declared_availability_state",
+      "schema": "public",
+      "values": [
+        "AVAILABLE",
+        "MAYBE",
+        "UNAVAILABLE",
+        "UNKNOWN"
+      ]
+    },
+    "public.note_kind": {
+      "name": "note_kind",
+      "schema": "public",
+      "values": [
+        "DESTINATION_OBJECTION",
+        "DESTINATION_PREFERENCE",
+        "BUDGET",
+        "OTHER"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

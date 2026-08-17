@@ -1,0 +1,1 @@
+ALTER TABLE "trips" ADD COLUMN "duration_defaulted" boolean DEFAULT false NOT NULL;

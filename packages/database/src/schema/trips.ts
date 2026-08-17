@@ -48,6 +48,10 @@ export const trips = pgTable(
   // Duration range — "4–6 days", never a single number (brief section 8).
   durationMinDays: integer("duration_min_days"),
   durationMaxDays: integer("duration_max_days"),
+  // Whether the range above was assumed rather than chosen. The card marks it
+  // "(default)" so nobody takes an assumption of ours for a group decision —
+  // and 3–7 is a plausible thing to pick deliberately, so it cannot be inferred.
+  durationDefaulted: boolean("duration_defaulted").notNull().default(false),
   // Set when status reaches DATE_SELECTED.
   selectedStart: date("selected_start"),
   selectedEnd: date("selected_end"),

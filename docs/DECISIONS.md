@@ -656,6 +656,44 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): card density — one icon per section, one problem per warning
+
+Founder: mark the assumed duration, collapse the repeated conflict warning, and
+generally *"do not overload the output with too much text and emojis… use emojis
+to demarcate sections… do not create too much cognitive load."*
+
+**"3–7 days (default)".** The wizard assumes 3–7 when someone answers "idk", and
+the card then presented that identically to a range the group had chosen. Marking
+it does two things: it stops our guess being mistaken for their decision, and it
+reads as an invitation to change it. This needed a column
+(`trips.duration_defaulted`) rather than a check for `3 && 7` — someone can
+deliberately pick exactly 3–7, and inferring it would mislabel their choice. An
+explicit edit ("make it 5 days") clears the flag.
+
+**Warnings collapse by kind, not by person.** Three people blocked by the same
+thing produced three near-identical warnings, each with its own ⚠️, reading as
+three separate problems. Now one heading names everyone, each person contributes
+only what is specific to them, and the way out is stated once. With a single
+person the detail folds into the heading — saying their name three times to make
+one point is exactly the noise being removed:
+
+    ⚠️ Dan and Mei can't do any of these dates
+    Dan — free 3–9 Jan 2027
+    Shift the dates, or go without Dan and Mei.
+
+**Emoji demarcate sections, not lines.** Per-line ✅ ❓ 🤔 ❌ 💬 🗓 turned every
+status into a decoded symbol. The distinctions they carried are the product's
+whole point, so the *words* stay and only the icons go: "Farah — roster not out",
+"Mei — can't make it". ⚠️ (problems), 🎉 (confirmed) and ⏳ (data limit) remain,
+one per section. A test asserts the status icons stay out.
+
+**Option rows are one line, not two.** `1. 7–11 Nov 2026 · 5d · 3/4 · 2 leave` —
+five options previously cost ten lines and five ticks. Per-option length is kept
+despite the squeeze, because with a 3–7 day range the options genuinely differ
+and dropping it would hide the trade-off being ranked.
+
+---
+
 ## Decision (2026-08-17): AL without the unit, and two gate bugs behind it
 
 Founder: *"AL should be accepted as an abbreviation for Annual Leave too."*

@@ -109,6 +109,8 @@ interface WizardState {
   horizonStart?: ISODate;
   horizonEnd?: ISODate;
   durationMin?: number;
+  /** Set when we assumed the range rather than being told it. */
+  durationDefaulted?: boolean;
   durationMax?: number;
   /** Set when /newtrip arguments were interpreted, so we echo them back. */
   interpreted: boolean;
@@ -653,6 +655,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       horizonStart: state.horizonStart,
       horizonEnd: state.horizonEnd,
       durationMinDays: state.durationMin,
+      durationDefaulted: state.durationDefaulted ?? false,
       durationMaxDays: state.durationMax,
       telegramChatId: isGroup(ctx) ? String(ctx.chat!.id) : null,
     });
@@ -779,6 +782,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
     state.durationMin = DEFAULT_DURATION.min;
     state.durationMax = DEFAULT_DURATION.max;
+    state.durationDefaulted = true;
     await ctx.reply(
       `No problem — I'll assume ${DEFAULT_DURATION.min}–${DEFAULT_DURATION.max} days ` +
         "for now, anything from a long weekend to a week.",
@@ -834,6 +838,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
         return;
       }
       state.durationMin = duration.min;
+      state.durationDefaulted = false;
       state.durationMax = duration.max;
       // Nothing was interpreted on the way in, so create without a confirm tap.
       if (nextStep(state) === "confirm" && !state.interpreted) {
@@ -1256,6 +1261,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       destinations: trip.destinationCandidates ?? [],
       durationMinDays: trip.durationMinDays,
       durationMaxDays: trip.durationMaxDays,
+      durationDefaulted: trip.durationDefaulted,
       ranked,
       participants,
       tripUrl: `${deps.publicBaseUrl}/t/${trip.shortCode}`,
@@ -1365,6 +1371,9 @@ export function createBot(token: string, deps: BotDeps): Bot {
         horizonEnd: edit.horizon?.end,
         durationMinDays: edit.duration?.min,
         durationMaxDays: edit.duration?.max,
+        // Someone asking for "make it 5 days" has chosen it, so the card must
+        // stop calling the range a default.
+        ...(edit.duration ? { durationDefaulted: false } : {}),
       });
     }
   }

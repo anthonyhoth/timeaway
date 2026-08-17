@@ -95,8 +95,8 @@ describe("renderTripCard", () => {
       ]),
     );
     expect(card).toMatch(/\d windows work so far/);
-    expect(card).toMatch(/1\. .+ · \d days/);
-    expect(card).toMatch(/✅ \d of \d in · \d+ leave/);
+    expect(card).toMatch(/1\. .+ · \dd · \d\/\d/);
+    expect(card).toMatch(/· \d\/\d · \d+ leave/);
     expect(card).toContain("https://timeaway.sg/t/abc123");
   });
 
@@ -111,7 +111,7 @@ describe("renderTripCard", () => {
         ]),
       ]),
     );
-    expect(card).toContain("Farah — waiting on roster");
+    expect(card).toContain("Farah — roster not out");
     expect(card).not.toContain("Farah — maybe");
   });
 
@@ -140,7 +140,7 @@ describe("renderTripCard", () => {
     );
     expect(card).toContain("No window works for everyone yet");
     expect(card).toContain("Closest:");
-    expect(card).toMatch(/❌ (Anthony|Mei) can't make it/);
+    expect(card).toMatch(/(Anthony|Mei) — can't make it/);
     expect(card).toContain("Shift a date or go without someone");
   });
 
@@ -189,7 +189,7 @@ describe("opting out", () => {
         person("p2", "Dan", [], null, true),
       ]),
     );
-    expect(card).toMatch(/of 1 in/);
+    expect(card).toMatch(/\/1 · /);
     expect(card).not.toMatch(/of 2 in/);
   });
 });
@@ -251,5 +251,65 @@ describe("data coverage cliff", () => {
       horizonEnd: "2026-11-30",
     });
     expect(card).not.toContain("ignore public holidays");
+  });
+});
+
+describe("output density", () => {
+  const base = () =>
+    build([
+      person("p1", "Anthony", [
+        { state: "AVAILABLE", start: "2026-11-02", end: "2026-11-20" },
+      ]),
+    ]);
+
+  it("marks a duration we assumed, so it doesn't read as the group's choice", () => {
+    const card = renderTripCard({ ...base(), durationDefaulted: true });
+    expect(card).toContain("(default)");
+  });
+
+  it("says nothing when the duration was actually chosen", () => {
+    const card = renderTripCard({ ...base(), durationDefaulted: false });
+    expect(card).not.toContain("(default)");
+  });
+
+  /**
+   * Three people blocked by one thing used to produce three warnings and three
+   * warning icons, reading as three separate problems.
+   */
+  it("collapses one problem shared by several people into one warning", () => {
+    const card = renderTripCard({
+      ...base(),
+      diagnostics: [
+        {
+          kind: "BLOCKED_ACROSS_HORIZON",
+          participantId: "p2",
+          availableElsewhere: [{ start: "2027-01-03", end: "2027-01-09" }],
+        },
+        {
+          kind: "BLOCKED_ACROSS_HORIZON",
+          participantId: "p3",
+          availableElsewhere: [],
+        },
+      ] as never,
+      participants: [
+        ...base().participants,
+        person("p2", "Dan"),
+        person("p3", "Mei"),
+      ],
+    });
+
+    expect(card).toContain("Dan and Mei can't do any of these dates");
+    // One icon for one problem, and the way out stated once.
+    expect(card.match(/⚠️/g) ?? []).toHaveLength(1);
+    expect(card.match(/go without/g) ?? []).toHaveLength(1);
+    // The detail specific to one person survives the collapse.
+    expect(card).toContain("Dan — free");
+  });
+
+  it("keeps the status emoji out of the per-person lines", () => {
+    const card = renderTripCard(base());
+    for (const noisy of ["✅", "❌", "❓", "🤔", "💬", "🗓"]) {
+      expect(card, noisy).not.toContain(noisy);
+    }
   });
 });

@@ -12,6 +12,8 @@ export interface CreateTripInput {
   horizonEnd?: string | null;
   durationMinDays?: number | null;
   durationMaxDays?: number | null;
+  /** True when the duration was assumed for them, not chosen. */
+  durationDefaulted?: boolean;
   /** Group chat the trip was created in; enables ambient capture there. */
   telegramChatId?: string | null;
 }
@@ -48,6 +50,7 @@ export async function createTrip(db: Db, input: CreateTripInput): Promise<Trip> 
             horizonEnd: input.horizonEnd ?? null,
             durationMinDays: input.durationMinDays ?? null,
             durationMaxDays: input.durationMaxDays ?? null,
+            durationDefaulted: input.durationDefaulted ?? false,
             telegramChatId: input.telegramChatId ?? null,
           })
           .returning();
@@ -146,6 +149,7 @@ export async function setTripShape(
     horizonEnd?: string;
     durationMinDays?: number;
     durationMaxDays?: number;
+    durationDefaulted?: boolean;
   },
 ): Promise<void> {
   const patch: Record<string, unknown> = {};
@@ -153,6 +157,10 @@ export async function setTripShape(
   if (shape.horizonEnd) patch.horizonEnd = shape.horizonEnd;
   if (shape.durationMinDays) patch.durationMinDays = shape.durationMinDays;
   if (shape.durationMaxDays) patch.durationMaxDays = shape.durationMaxDays;
+  // Explicitly false is meaningful here, so a truthiness check would drop it.
+  if (shape.durationDefaulted !== undefined) {
+    patch.durationDefaulted = shape.durationDefaulted;
+  }
   if (Object.keys(patch).length === 0) return;
   await db.update(trips).set(patch).where(eq(trips.id, tripId));
 }
