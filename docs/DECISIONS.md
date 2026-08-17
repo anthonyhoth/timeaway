@@ -549,6 +549,22 @@ Trip shape was frozen at creation — the gap behind several earlier problems, i
 
 ---
 
+## Decision (2026-08-17, founder-decided): adding the bot offers a Start button; planning never begins on its own
+
+The founder asked whether adding the bot to a group starts planning without an owner running the flow in a DM. It did not: joining only posted an intro, and ambient capture is gated on finding an active trip for that chat, so with no trip the bot read nothing at all. Someone had to run `/newtrip` in the group, or arrive via the `?startgroup=trip_<code>` deep link from a DM-staged trip.
+
+That required knowing and typing a command — exactly the kind of step the ambient pivot was meant to remove.
+
+**Decision: the join message carries a "Start planning a trip" button.** One tap, no typing, and consent stays explicit — the bot is demonstrably not reading anything beforehand, which is worth saying plainly in a chat where it has message access. **Whoever taps becomes the organiser**, which is more meaningful than whoever happened to add the bot.
+
+Starting this way asks for *nothing*: the trip is created destination-open, with the next three months and 3–7 days as placeholders, and conversation reshapes it through the editing grammar ("let's do Japan", "next year", "make it a long weekend"). The card's invitation state now says so, since this flow never asks the wizard's questions.
+
+Fully automatic start — creating a trip the moment the bot joins — was considered and rejected: a bot that begins recording availability for a trip nobody asked for is a worse first impression, and the organiser would be assigned by accident.
+
+`/newtrip` still works in a group and in a DM, so nothing is taken away; the button is simply the path that needs no prior knowledge.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

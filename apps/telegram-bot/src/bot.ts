@@ -110,10 +110,11 @@ function defaultHorizon(today: ISODate): { start: ISODate; end: ISODate } {
 
 const JOIN_MESSAGE =
   "Hey! I'm Timeaway — I help this group find trip dates that actually work.\n\n" +
-  "I'll quietly watch this chat for availability talk (\"can't do October\", " +
-  "\"max 2 days leave\") once a trip is being planned — I keep only what's " +
-  "about dates, nothing else. /pause stops me anytime.\n\n" +
-  "/newtrip — start planning a trip";
+  "Tap below and then just talk about dates the way you normally would " +
+  "(\u201ccmi October\u201d, \u201conly got 2 days AL\u201d). I'll work out " +
+  "which windows fit everyone.\n\n" +
+  "I only keep what's about dates, and I'm not reading anything until you " +
+  "start. /pause stops me anytime.";
 
 /**
  * Telegram only accepts publicly resolvable URLs in inline keyboard buttons,
@@ -173,7 +174,18 @@ export function createBot(token: string, deps: BotDeps): Bot {
       ctx.myChatMember.old_chat_member.status,
     );
     if (isGroup(ctx) && wasOut && status === "member") {
-      await ctx.reply(JOIN_MESSAGE);
+      // A tap is the whole setup: no command to remember, and whoever taps
+      // becomes organiser — more meaningful than whoever added the bot
+      // (founder-decided, docs/DECISIONS.md).
+      const existing = await findActivePlanningTripByChatId(
+        deps.db,
+        String(ctx.chat.id),
+      );
+      await ctx.reply(JOIN_MESSAGE, {
+        reply_markup: existing
+          ? undefined
+          : new InlineKeyboard().text("Start planning a trip", "trip:begin"),
+      });
     }
   });
 
@@ -834,6 +846,47 @@ export function createBot(token: string, deps: BotDeps): Bot {
     await ctx.editMessageReplyMarkup({ reply_markup: undefined });
     const updated = await getTripById(deps.db, trip.id);
     if (updated) await refreshTripCard(ctx, updated, { forceNew: true });
+  });
+
+  bot.callbackQuery("trip:begin", async (ctx) => {
+    if (!ctx.chat || !isGroup(ctx)) return;
+    const existing = await findActivePlanningTripByChatId(
+      deps.db,
+      String(ctx.chat.id),
+    );
+    if (existing) {
+      await ctx.answerCallbackQuery("Already planning a trip here.");
+      return;
+    }
+
+    const organiser = await upsertTelegramUser(deps.db, {
+      telegramUserId: String(ctx.from.id),
+      displayName: [ctx.from.first_name, ctx.from.last_name]
+        .filter(Boolean)
+        .join(" "),
+    });
+    // Nothing is asked for up front — the defaults are honest placeholders
+    // and conversation reshapes them ("Japan", "next year", "a week").
+    const horizon = defaultHorizon(today());
+    const trip = await createTrip(deps.db, {
+      organiserUserId: organiser.id,
+      destinationCandidates: [],
+      horizonStart: horizon.start,
+      horizonEnd: horizon.end,
+      durationMinDays: DEFAULT_DURATION.min,
+      durationMaxDays: DEFAULT_DURATION.max,
+      telegramChatId: String(ctx.chat.id),
+    });
+    await ensureParticipantForTelegramUser(deps.db, trip.id, {
+      telegramUserId: String(ctx.from.id),
+      displayName: [ctx.from.first_name, ctx.from.last_name]
+        .filter(Boolean)
+        .join(" "),
+    });
+
+    await ctx.answerCallbackQuery("Listening now.");
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await refreshTripCard(ctx, trip);
   });
 
   bot.callbackQuery("trip:narrow", async (ctx) => {

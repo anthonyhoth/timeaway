@@ -214,6 +214,9 @@ export function renderTripCard(input: CardInput): string {
       "Just talk about dates like you normally would — \u201ccmi October\u201d, " +
         "\u201conly got 2 days AL\u201d, \u201croster not out yet\u201d — and I'll " +
         "work out what fits.",
+      "",
+      "You can shape the trip the same way: \u201clet's do Japan\u201d, " +
+        "\u201cnext year\u201d, \u201cmake it a long weekend\u201d.",
     );
 
     // Acknowledge anything already heard that isn't a date, so the card never
