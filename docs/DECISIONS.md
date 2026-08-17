@@ -656,6 +656,49 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-18): Singlish particles decide whether a sentence is an answer
+
+Founder asked whether the guardrails are enough for colloquial positive and
+negative schedule mentions, citing *"nov cannot lah"* and *"i think dec can"*.
+
+Both of those already worked. Probing the wider inventory found something
+worse: **the parser could not tell an assertion from a question.**
+
+Singapore English carries in sentence-final particles what spoken English
+carries in intonation (Gupta; Lim), and the assertive and interrogative sets are
+invisible to a matcher that only sees the word "can" (Wee, on *can* as a
+standalone predicate). So all of these were recorded as the speaker declaring
+themselves free:
+
+    "dec can meh"     meh challenges the presupposition — it doubts that it can
+    "dec can hor"     hor seeks agreement — a tag question
+    "dec can bo"      Hokkien 無, the "or not" of an alternative question
+    "dec can or not"  the same, in English
+
+The sharpest was **"nov cannot meh"**, which argues that November *is* possible
+and was being recorded as the speaker blocking November out — the exact
+opposite of what they said. Asking the group a question is not answering it, so
+these now decline; the answer belongs to whoever replies.
+
+The assertive particles are unaffected and still parse: *lah* asserts, *lor*
+concedes, *leh* softens, *one* emphasises.
+
+**Two further gaps, both from the particle system.** Agreement here is short and
+often verbless — "steady", "on lah", "okok", "fine lah", "chill" — and every one
+of them declined while its standard-English equivalent parsed. So did
+Hokkien-derived negation: *buay*, *buay tahan*, *jialat*, *bo hong*.
+
+**Hedged agreement is now MAYBE rather than yes.** "Should be can", "probably
+can", "will try" are agreements with the commitment removed, and recording them
+as a firm yes is precisely how a group ends up with a date half of them never
+agreed to — the failure mode the research pass kept surfacing. MAYBE keeps the
+signal without letting it count as a commitment.
+
+One guard worth noting: agreement "on" ("dec on lah") is only read as a verb
+when it ends the sentence, so the preposition in "cmi on 5 dec" is untouched.
+
+---
+
 ## Decision (2026-08-17): what 183 simulated messages and a research pass found
 
 Founder asked for the engine to be improved against real trip-deciding talk,

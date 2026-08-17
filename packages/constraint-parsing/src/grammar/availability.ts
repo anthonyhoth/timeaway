@@ -27,11 +27,20 @@ const PARTICLES =
 const CONDITIONAL =
   /\b(?:if|unless|provided|as long as|depends on (?!my (?:roster|schedule|shift))|otherwise|but only|except|prefer|rather|maybe can|might be able)\b/i;
 
+/**
+ * Hokkien-derived negation is standard here: "buay" (cannot), "bo" (not have),
+ * "buay tahan" (cannot stand it), "jialat" (in trouble). All were declining.
+ */
 const NEGATIVE =
-  /\b(?:cannot|can'?t|cant|cmi|cbb|no can do|not free|bo eng|not avail(?:able)?|unavailable|busy|got (?:plans|thing|something)|away|overseas?|out of town|clash(?:es|ing)?|no leave|out for|miss(?:ing)? this|skip)\b/i;
+  /\b(?:cannot|can'?t|cant|cmi|cbb|no can do|not free|bo eng|bo hong|buay|bway|buay tahan|jialat|not avail(?:able)?|unavailable|busy|got (?:plans|thing|something)|away|overseas?|out of town|clash(?:es|ing)?|no leave|out for|miss(?:ing)? this|skip|pang seh|siao ah)\b/i;
 
+/**
+ * Agreement in Singapore English is short and often carries no verb at all —
+ * "steady", "on lah", "okok". These were declining while their standard-English
+ * equivalents parsed.
+ */
 const POSITIVE =
-  /\b(?:can(?:\s+make\s+it)?|free|avail(?:able)?|ok(?:ay)?|works? for me|fine (?:with|for) me|count me in|i'?m in|im in|on for|all good|no (?:prob(?:lem)?|issue)|sure|good for me|up for)\b/i;
+  /\b(?:can(?:\s+make\s+it)?|free|avail(?:able)?|ok(?:ay|ok)?|works? for me|fine (?:with|for) me|fine lah|count me in|i'?m in|im in|on for|all good|no (?:prob(?:lem)?|issue)|sure|good for me|up for|steady|shiok|game|chill|fine|jio me|no issue|why not|will try|try to make)\b|(?:i'?m|im|i)\s+on\b|\bon\s*$/i;
 
 /** Explicitly cannot forecast yet — distinct from silence (UNANSWERED). */
 const UNKNOWN =
@@ -81,6 +90,40 @@ const RESTRICTIVE = /\b(?:only|nothing but|just)\b/i;
  */
 const KNOWS_LATER =
   /\b(?:out|release[ds]?|released|confirm(?:ed)?|know|fixed|available)\b[^.]{0,20}\b(?:next|by|after|in|on)\b/i;
+
+/**
+ * Particles that make an utterance a *question* rather than an assertion.
+ *
+ * Singapore English carries in particles what spoken English carries in
+ * intonation (Gupta; Lim), and the assertive and interrogative sets look
+ * identical to a matcher that only sees "can". "Can lah" asserts; "can meh"
+ * challenges the very possibility. Both were being recorded as the speaker
+ * declaring themselves free.
+ *
+ *   meh      — challenges a presupposition. "Can meh?" doubts that it can.
+ *   hor      — seeks agreement. "Can hor?" is a tag question, not a claim.
+ *   bo       — Hokkien 無, the "or not" of an alternative question.
+ *   or not   — the same, in English.
+ *   izzit    — tag question.
+ *   ah + ?   — interrogative when it closes a question.
+ *
+ * "Nov cannot meh" is the sharpest: it argues that November *is* possible, and
+ * was being recorded as the speaker blocking November out — the opposite of
+ * what they said.
+ *
+ * Asking the group a question is not answering it, so these decline. The
+ * question is still a real signal, but it belongs to whoever answers.
+ */
+const INTERROGATIVE_PARTICLE =
+  /\b(?:meh|bo|izzit|is ?it|or not|or nt)\s*\??\s*$|\bhor\s*\??\s*$|\bah\s*\?\s*$|\?\s*$/i;
+
+/**
+ * Hedged positives. "Should be can" and "probably can" are agreements with the
+ * commitment removed, and recording them as a firm yes is how a group ends up
+ * with a date half of them never actually agreed to.
+ */
+const HEDGED_POSITIVE =
+  /\b(?:should be|probably|most likely|likely|i think can|think can|quite sure|fairly sure|shd be|prob|maybe|might|possibly|try(?:ing)? to|will try|see how)\b/i;
 
 /**
  * Open-ended availability — "free whenever", "anytime works".
@@ -394,10 +437,18 @@ export function parseAvailabilityMessage(
   const isNegative = NEGATIVE.test(text);
   const isPositive = POSITIVE.test(text);
 
+  // Asking is not answering. A question about a date belongs to whoever
+  // replies to it, not to the person who raised it.
+  if (INTERROGATIVE_PARTICLE.test(rawText.trim())) return null;
+
   let state: DeclaredAvailabilityState | null = null;
   if (isUnknown) state = "UNKNOWN";
   else if (isBlocked || isNegative) state = "UNAVAILABLE";
-  else if (isPositive) state = "AVAILABLE";
+  else if (isPositive) {
+    // A hedge is an agreement with the commitment taken out. MAYBE keeps the
+    // signal without letting it count as a yes the group can plan around.
+    state = HEDGED_POSITIVE.test(text) ? "MAYBE" : "AVAILABLE";
+  }
 
   if (state === null) return null;
 
