@@ -615,7 +615,11 @@ export function createBot(token: string, deps: BotDeps): Bot {
    * Called after every accepted constraint, so the group watches the picture
    * sharpen without the chat filling with repeated posts.
    */
-  async function refreshTripCard(ctx: Context, trip: Trip): Promise<void> {
+  async function refreshTripCard(
+    ctx: Context,
+    trip: Trip,
+    options: { forceNew?: boolean } = {},
+  ): Promise<void> {
     const chatId = trip.telegramChatId;
     if (!chatId) return;
 
@@ -704,7 +708,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       }
     }
 
-    if (trip.cardMessageId) {
+    if (trip.cardMessageId && !options.forceNew) {
       try {
         await ctx.api.editMessageText(chatId, Number(trip.cardMessageId), text, {
           reply_markup: keyboard,
@@ -766,9 +770,9 @@ export function createBot(token: string, deps: BotDeps): Bot {
       await ctx.reply("No trip being planned here yet — /newtrip to start one.");
       return;
     }
-    // Repost rather than edit, so the card surfaces at the bottom of the chat.
-    await setCardMessageId(deps.db, trip.id, "");
-    await refreshTripCard(ctx, { ...trip, cardMessageId: null });
+    // Always a fresh message: /dates is asked precisely because the card has
+    // scrolled away, so editing it in place would look like nothing happened.
+    await refreshTripCard(ctx, trip, { forceNew: true });
   });
 
   /** Only the organiser confirms dates (founder-decided, docs/DECISIONS.md). */

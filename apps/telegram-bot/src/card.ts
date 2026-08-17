@@ -158,6 +158,20 @@ function diagnosticLines(input: CardInput): string[] {
   return lines;
 }
 
+/** Non-date input already captured, one bullet per person. */
+function notedLines(
+  participants: readonly ParticipantPlanningState[],
+): string[] {
+  return participants
+    .filter((p) => p.maxLeaveDays !== null)
+    .map(
+      (p) =>
+        `• ${p.displayName} — up to ${p.maxLeaveDays} leave ${
+          p.maxLeaveDays === 1 ? "day" : "days"
+        }`,
+    );
+}
+
 function header(input: CardInput): string[] {
   const lines = [formatDestinations(input.destinations)];
   if (input.durationMinDays !== null && input.durationMaxDays !== null) {
@@ -203,11 +217,10 @@ export function renderTripCard(input: CardInput): string {
     );
 
     // Acknowledge anything already heard that isn't a date, so the card never
-    // looks like it ignored someone.
-    const caps = input.participants
-      .filter((p) => p.maxLeaveDays !== null)
-      .map((p) => `${p.displayName} up to ${p.maxLeaveDays} leave days`);
-    if (caps.length > 0) lines.push("", `Noted so far: ${caps.join(", ")}`);
+    // looks like it ignored someone. One line per person: a comma-joined run
+    // stops being readable the moment a second person is in it.
+    const notes = notedLines(input.participants);
+    if (notes.length > 0) lines.push("", "Noted so far:", ...notes);
 
     lines.push("", "/dates to see options · /pause to stop me reading", input.tripUrl);
     return lines.join("\n");
@@ -241,6 +254,9 @@ export function renderTripCard(input: CardInput): string {
       });
       const attention = attentionLines(options[0]!, input.participants);
       if (attention.length > 0) lines.push("", ...attention);
+
+      const notes = notedLines(input.participants);
+      if (notes.length > 0) lines.push("", "Noted so far:", ...notes);
 
       lines.push(
         "",

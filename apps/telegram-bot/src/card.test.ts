@@ -58,11 +58,13 @@ describe("renderTripCard", () => {
     expect(card).toContain("I'm listening in this chat now");
   });
 
-  it("acknowledges a leave cap even with no dates yet", () => {
+  it("lists each person's noted constraints on their own line", () => {
     const card = renderTripCard(
-      build([person("p1", "Anthony", [], 10)]),
+      build([person("p1", "Anthony", [], 10), person("p2", "Mei", [], 1)]),
     );
-    expect(card).toContain("Noted so far: Anthony up to 10 leave days");
+    expect(card).toContain("• Mei — up to 1 leave day");
+    expect(card).toContain("Noted so far:");
+    expect(card).toContain("• Anthony — up to 10 leave days");
   });
 
   it("invites input when nobody has said anything", () => {

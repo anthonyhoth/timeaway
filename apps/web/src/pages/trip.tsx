@@ -164,13 +164,23 @@ export function TripPage({
               chat and this page updates.
             </p>
             {view.participants.some((p) => p.maxLeaveDays !== null) && (
-              <p class="muted" style="font-size:15px;margin-top:16px">
-                Noted so far:{" "}
-                {view.participants
-                  .filter((p) => p.maxLeaveDays !== null)
-                  .map((p) => `${p.firstName} up to ${p.maxLeaveDays} leave days`)
-                  .join(", ")}
-              </p>
+              <div style="margin-top:20px;text-align:left">
+                <p
+                  style={`font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${BRAND.jetlag};margin-bottom:8px`}
+                >
+                  Noted so far
+                </p>
+                <ul class="muted" style="font-size:15px;margin:0;padding-left:20px">
+                  {view.participants
+                    .filter((p) => p.maxLeaveDays !== null)
+                    .map((p) => (
+                      <li style="margin-bottom:4px">
+                        {p.firstName} — up to {p.maxLeaveDays} leave{" "}
+                        {p.maxLeaveDays === 1 ? "day" : "days"}
+                      </li>
+                    ))}
+                </ul>
+              </div>
             )}
           </div>
         )}
