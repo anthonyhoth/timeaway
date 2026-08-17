@@ -899,6 +899,12 @@ export function createBot(token: string, deps: BotDeps): Bot {
     // Opinions — objections, preferences, budget. Recorded and shown, never
     // acted on, and checked before trip edits so a first-person "I'd rather
     // not do Japan again" isn't executed as "drop Japan".
+    //
+    // Recording one must never end the message: people bundle an opinion with
+    // a constraint ("free in Nov but budget's tight", "I can afford 10 days
+    // of leave"), and returning here dropped the dates while the ✍ told the
+    // group they had landed.
+    let noted = false;
     {
       const note = parseParticipantNote(text);
       if (note) {
@@ -913,16 +919,25 @@ export function createBot(token: string, deps: BotDeps): Bot {
           },
         );
         await addParticipantNote(deps.db, participant.id, note.kind, note.text);
-        try {
-          await ctx.react("✍");
-        } catch (error) {
-          console.error("reaction failed", error);
-        }
-        const afterNote = await getTripById(deps.db, trip.id);
-        if (afterNote) await refreshTripCard(ctx, afterNote);
-        return;
+        noted = true;
       }
     }
+
+    /**
+     * One ack per message, however many signals it carried. Reacting inside
+     * each branch double-reacted on "free in Nov but budget's tight" — and,
+     * worse, the note branch returned before the dates were ever read.
+     */
+    const finish = async (changed: boolean): Promise<void> => {
+      if (!changed) return;
+      try {
+        await ctx.react("✍");
+      } catch (error) {
+        console.error("reaction failed", error);
+      }
+      const updated = await getTripById(deps.db, trip.id);
+      if (updated) await refreshTripCard(ctx, updated);
+    };
 
     // Someone steering the trip itself — "Korea too", "push to December",
     // "make it 5 days". Checked after availability, so a message about a
@@ -958,7 +973,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     let result = parseAvailabilityMessage(text, extractionCtx);
     let source: "grammar" | "llm" = "grammar";
     if (!result) {
-      if (!deps.extractor) return;
+      if (!deps.extractor) return finish(noted);
 
       // A standing outage (no credits, dead key) fails identically on every
       // message. Skip the call while the breaker is open, and say something —
@@ -969,7 +984,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
             reply_parameters: { message_id: ctx.msg!.message_id },
           });
         }
-        return;
+        return finish(noted);
       }
 
       // Spend is otherwise unbounded: cost scales with how chatty a group is,
@@ -985,7 +1000,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
           chatId: String(ctx.chat!.id),
           properties: { used },
         });
-        return;
+        return finish(noted);
       }
       void recordEvent(deps.db, {
         event: "llm_call",
@@ -1015,14 +1030,16 @@ export function createBot(token: string, deps: BotDeps): Bot {
             reply_parameters: { message_id: ctx.msg!.message_id },
           });
         }
-        return;
+        return finish(noted);
       }
     }
-    if (!result.relevant) return;
+    if (!result.relevant) return finish(noted);
     // Third-party relays ("Sheryl can only do school holidays") need identity
     // resolution we don't have yet — skip rather than guess. TODO(task 8+).
-    if (result.subjectName) return;
-    if (result.declarations.length === 0 && result.maxLeaveDays === null) return;
+    if (result.subjectName) return finish(noted);
+    if (result.declarations.length === 0 && result.maxLeaveDays === null) {
+      return finish(noted);
+    }
 
     const from = ctx.from!;
     const participant = await ensureParticipantForTelegramUser(deps.db, trip.id, {
@@ -1048,14 +1065,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
     // Ack without noise (founder-decided): react, don't reply — the live card
     // carries the actual update.
-    try {
-      await ctx.react("✍");
-    } catch (error) {
-      console.error("reaction failed", error);
-    }
-
-    const updated = await getTripById(deps.db, trip.id);
-    if (updated) await refreshTripCard(ctx, updated);
+    await finish(true);
   }
 
   /**

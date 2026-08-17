@@ -3,6 +3,8 @@ import type { ExtractionContext, ExtractionResult } from "../types.js";
 import { findMonthRange } from "./months.js";
 import type { FoundPeriod } from "./periods.js";
 import { findFuzzyPeriod, findRelativePeriod } from "./periods.js";
+import { findChronoPeriod } from "./chrono.js";
+import { findSubPeriod } from "./subperiods.js";
 
 /**
  * Deterministic availability parsing for ambient group chat, tuned for how
@@ -33,11 +35,31 @@ const POSITIVE =
 const UNKNOWN =
   /\b(?:roster(?! is out)|shift(?:s)? (?:not|nt)|not (?:out|released|confirmed|fixed|sure)|dunno|dun know|don'?t know|no idea|tbc|tbd|let (?:you|u|yall) know|lyk|confirm(?:ing)? later|pending|waiting (?:for|on)|not yet (?:confirm|out|sure))\b/i;
 
+/** Notes from findSubPeriod — a reference already narrowed to part of a month. */
+const SUB_PERIOD_NOTES = new Set([
+  "first week",
+  "second week",
+  "third week",
+  "last week",
+  "first half",
+  "second half",
+  "early",
+  "mid",
+  "late",
+  ...[1, 2, 3, 4, 5].flatMap((n) => [`first ${n} weeks`, `last ${n} weeks`]),
+  // A two-ended chrono span states both edges outright ("dec 20th till jan
+  // 2nd"), so the narrowing word it contains has already been honoured.
+  "chrono range",
+]);
+
 /**
  * Qualifiers that narrow a period to part of it — "first two weeks of Nov",
  * "end of December", "mid-Sep". The month matcher would happily return the
- * whole month here, silently over-claiming someone's unavailability, so the
- * grammar declines and lets the LLM resolve the narrower span instead.
+ * whole month here, silently over-claiming someone's unavailability.
+ *
+ * findSubPeriod now resolves the common shapes exactly; this guard catches
+ * what it could not place ("before the 20th", "from Nov onwards") and hands
+ * those to the LLM instead.
  */
 const SUB_PERIOD_QUALIFIER =
   /\b(?:first|last|early|earlier|mid|middle|late|later|beginning|start|end|half|before|after|until|till|from)\b|\b\d{1,2}\s*(?:weeks?|wks?)\b/i;
@@ -69,9 +91,18 @@ const KNOWS_LATER =
 const OPEN_ENDED =
   /\b(?:when ?ever|any ?time|any day|any dates?|all dates?|all good|flexible|no preference|dun ?mind|don'?t mind|up to (?:you|u|yall|the group))\b/i;
 
-/** Obligations that read as hard unavailability in this segment. */
+/**
+ * Obligations that read as hard unavailability in this segment.
+ *
+ * National Service is the sharpest case and deserves its own vocabulary: an
+ * NSman on mobilisation manning or in-camp training is not merely busy, he is
+ * barred from leaving the country. Getting this wrong is worse than a normal
+ * misread — the trip would be built around a date he legally cannot travel on.
+ * "Mob manning" is written a dozen ways in chat ("mob mannin", "mobilisation
+ * manning", "ops manning"), so all of them resolve here.
+ */
 const BLOCKING_COMMITMENT =
-  /\b(?:reservist|ict|in ?camp|ns\b|exam(?:s)?|wedding|work trip|bto|attachment)\b/i;
+  /\b(?:reservist|ict|in ?camp|ns\b|ns ?duty|mob(?:ilisation|ilization)?[ -]?mann?in[g']?|ops? ?mann?in[g']?|mob ?ex|high[ -]?key|low[ -]?key|recall(?:ed)?|exam(?:s)?|wedding|work trip|bto|attachment)\b/i;
 
 function stripParticles(text: string): string {
   return text.replace(PARTICLES, " ").replace(/\s+/g, " ").trim();
@@ -118,7 +149,14 @@ function findDateReference(
   const found =
     findFuzzyPeriod(text, today) ??
     findRelativePeriod(text, today) ??
-    findMonthRange(text, today);
+    // Ahead of the whole-month matcher: "first 3 weeks of Jan" must narrow to
+    // those days, not widen to all of January.
+    findSubPeriod(text, today) ??
+    findMonthRange(text, today) ??
+    // Last stop before the LLM. Every Singapore-specific reading has already
+    // had its turn, so this only sees the general shapes our grammar has no
+    // opinion about — "dec 20th till jan 2nd", "3/11", "next fri to sun".
+    findChronoPeriod(text, today);
   if (!found || !horizonStart || !horizonEnd) return found;
 
   const overlaps = (p: FoundPeriod) =>
@@ -192,9 +230,11 @@ export function parseAvailabilityMessage(
 
   if (!dateRef) return null;
 
-  // A narrowing qualifier means the matched period is wider than what was
-  // actually said — decline rather than over-claim.
-  if (SUB_PERIOD_QUALIFIER.test(text)) return null;
+  // A narrowing qualifier means the matched period may be wider than what was
+  // actually said. If findSubPeriod already resolved the narrower span, the
+  // reference is exact and safe; otherwise decline rather than over-claim.
+  const narrowed = SUB_PERIOD_NOTES.has(dateRef.note);
+  if (!narrowed && SUB_PERIOD_QUALIFIER.test(text)) return null;
 
   const isUnknown = UNKNOWN.test(text);
 

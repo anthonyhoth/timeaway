@@ -69,6 +69,12 @@ export function findMonthRange(
     }
   }
 
+  // Named days come first: "20-25 Nov" must resolve to those six days. Falling
+  // through to the bare-month matcher turned a long-weekend constraint into a
+  // whole-month one — the exact over-claim the grammar exists to avoid.
+  const days = findDayRange(text, currentYear, currentMonth, yearHint);
+  if (days) return days.range.end < today ? null : clampToToday(days, today);
+
   const rangeMatch = new RegExp(
     `\\b(${MONTH_RE})(?:\\s+(\\d{4}))?${SEP}(${MONTH_RE})(?:\\s+(\\d{4}))?\\b`,
     "i",
@@ -103,6 +109,13 @@ export function findMonthRange(
       ? startYear
       : startYear + 1;
 
+  // A day we could see but could not resolve ("Nov 20, 22 and 25", "20th-ish
+  // Nov") must not silently become the whole month. Decline and let the LLM
+  // take it — one extra call is cheaper than a wrong month.
+  if (namesUnresolvedDay(text, match.index, match.index + match[0].length)) {
+    return null;
+  }
+
   const start = iso(startYear, startMonth, 1);
   const end = iso(endYear, endMonth, lastDay(endYear, endMonth));
   if (end < today) return null;
@@ -113,4 +126,98 @@ export function findMonthRange(
     start: match.index,
     end: match.index + match[0].length,
   };
+}
+
+const DAY = "(\\d{1,2})(?:st|nd|rd|th)?";
+const DAY_SEP = "\\s*(?:to|till|until|through|[–—-])\\s*";
+
+/**
+ * Explicit days against a month, in either order: "20-25 Nov", "Nov 20 to 25",
+ * "5 Dec". Deliberately requires the day to sit directly against the month
+ * name — "3-4 days in Dec" is a duration, and the intervening words keep it
+ * from matching here.
+ */
+function findDayRange(
+  text: string,
+  currentYear: number,
+  currentMonth: number,
+  yearHint?: number,
+): FoundPeriod | null {
+  const patterns: { re: RegExp; d1: number; d2: number | null; m: number; y: number }[] = [
+    // "20-25 Nov 2026"
+    { re: new RegExp(`\\b${DAY}${DAY_SEP}${DAY}\\s+(${MONTH_RE})(?:\\s+(\\d{4}))?\\b`, "i"), d1: 1, d2: 2, m: 3, y: 4 },
+    // "Nov 20-25 2026"
+    { re: new RegExp(`\\b(${MONTH_RE})\\s+${DAY}${DAY_SEP}${DAY}(?:\\s+(\\d{4}))?\\b`, "i"), d1: 2, d2: 3, m: 1, y: 4 },
+    // "25 Nov 2026"
+    { re: new RegExp(`\\b${DAY}\\s+(${MONTH_RE})(?:\\s+(\\d{4}))?\\b`, "i"), d1: 1, d2: null, m: 2, y: 3 },
+    // "Nov 25 2026"
+    { re: new RegExp(`\\b(${MONTH_RE})\\s+${DAY}(?:\\s+(\\d{4}))?\\b`, "i"), d1: 2, d2: null, m: 1, y: 3 },
+  ];
+
+  for (const p of patterns) {
+    const match = p.re.exec(text);
+    if (!match) continue;
+
+    const month = monthNumber(match[p.m]!);
+    if (month === null) continue;
+
+    const from = Number(match[p.d1]);
+    const to = p.d2 === null ? from : Number(match[p.d2]);
+    const explicitYear = match[p.y];
+    const year = explicitYear
+      ? Number(explicitYear)
+      : (yearHint ?? (month >= currentMonth ? currentYear : currentYear + 1));
+
+    // Out-of-range or inverted days mean we have misread the sentence.
+    // Declining is the only safe answer.
+    const limit = lastDay(year, month);
+    if (from < 1 || to < 1 || from > limit || to > limit || to < from) continue;
+
+    // "Nov 20, 22 and 25" is three separate days. Taking the first and
+    // discarding the rest is quieter than claiming the month but no more
+    // truthful — decline, and let the LLM read the whole list.
+    if (continuesDayList(text, match.index + match[0].length)) return null;
+
+    // "Dec 20th till Jan 2nd" is one span across two months. Claiming just the
+    // "Dec 20" half would quietly shrink someone's unavailability, so stand
+    // aside and let the general parser read the whole thing.
+    if (continuesToAnotherDate(text, match.index + match[0].length)) return null;
+
+    return {
+      range: { start: iso(year, month, from), end: iso(year, month, to) },
+      note: p.d2 === null ? "explicit day" : "explicit day range",
+      start: match.index,
+      end: match.index + match[0].length,
+    };
+  }
+  return null;
+}
+
+function clampToToday(found: FoundPeriod, today: ISODate): FoundPeriod {
+  return found.range.start >= today
+    ? found
+    : { ...found, range: { ...found.range, start: today } };
+}
+
+/** ", 22 and 25" trailing a day we already read — more days we have not. */
+function continuesDayList(text: string, from: number): boolean {
+  return /^\s*(?:,|and|&|\+|\/)\s*\d{1,2}\b/i.test(text.slice(from, from + 14));
+}
+
+/** A range separator leading into a second date — the span continues. */
+function continuesToAnotherDate(text: string, from: number): boolean {
+  return new RegExp(
+    `^\\s*(?:to|till|until|through|[–—-])\\s*(?:\\d{1,2}|${MONTH_RE})`,
+    "i",
+  ).test(text.slice(from, from + 20));
+}
+
+/** A day-shaped number pressed up against the month we just matched. */
+function namesUnresolvedDay(text: string, from: number, to: number): boolean {
+  const before = text.slice(Math.max(0, from - 14), from);
+  const after = text.slice(to, to + 14);
+  return (
+    /\d{1,2}(?:st|nd|rd|th)?\s*$/.test(before) ||
+    /^\s*\d{1,2}(?:st|nd|rd|th)?\b/.test(after)
+  );
 }

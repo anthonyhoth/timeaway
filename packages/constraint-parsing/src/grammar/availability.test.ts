@@ -143,10 +143,20 @@ describe("parseAvailabilityMessage — declining safely", () => {
 
 describe("parseAvailabilityMessage — does not over-claim a period", () => {
   // Found by an end-to-end run: this marked someone out for all of November.
-  it("declines when only part of a month is meant", () => {
-    expect(parse("cmi first two weeks of nov lah")).toBeNull();
-    expect(parse("cannot end of december")).toBeNull();
-    expect(parse("free mid sep")).toBeNull();
+  // Declining was the original fix; these shapes are now resolved exactly,
+  // which satisfies the same requirement — the span must never widen.
+  it("narrows to the part of the month that was meant", () => {
+    expect(parse("cmi first two weeks of nov lah")?.declarations[0]).toMatchObject(
+      { state: "UNAVAILABLE", start: "2026-11-01", end: "2026-11-14" },
+    );
+    expect(parse("cannot end of december")?.declarations[0]).toMatchObject({
+      state: "UNAVAILABLE",
+      start: "2026-12-21",
+      end: "2026-12-31",
+    });
+  });
+
+  it("still declines a boundary it cannot turn into a span", () => {
     expect(parse("can after the 15th of november")).toBeNull();
   });
 
@@ -224,5 +234,187 @@ describe("open-ended availability", () => {
 
   it("declines without a horizon, having nothing to mark", () => {
     expect(parseAvailabilityMessage("im free whenever", { today: "2026-08-17" })).toBeNull();
+  });
+});
+
+/**
+ * Found in live group testing: "can't do 20-25 nov" was claiming the whole of
+ * November. Over-claiming is the one failure mode the grammar must not have —
+ * a missed parse costs an LLM call, a confident wrong one corrupts the trip.
+ */
+describe("explicit days must not widen to the month", () => {
+  const ctx = {
+    today: "2026-08-17" as const,
+    horizonStart: "2026-11-01" as const,
+    horizonEnd: "2027-01-31" as const,
+    destination: null,
+  };
+
+  const only = (text: string) => {
+    const parsed = parseAvailabilityMessage(text, ctx);
+    expect(parsed, text).not.toBeNull();
+    expect(parsed!.declarations, text).toHaveLength(1);
+    return parsed!.declarations[0]!;
+  };
+
+  it("reads a day range before the month", () => {
+    expect(only("i can't do 20-25 nov")).toMatchObject({
+      state: "UNAVAILABLE",
+      start: "2026-11-20",
+      end: "2026-11-25",
+    });
+  });
+
+  it("reads a day range after the month", () => {
+    expect(only("free nov 20 to 25")).toMatchObject({
+      state: "AVAILABLE",
+      start: "2026-11-20",
+      end: "2026-11-25",
+    });
+  });
+
+  it("reads a single day", () => {
+    expect(only("cmi 25 dec")).toMatchObject({
+      state: "UNAVAILABLE",
+      start: "2026-12-25",
+      end: "2026-12-25",
+    });
+  });
+
+  it("handles ordinals", () => {
+    expect(only("can't make it 3rd-7th dec")).toMatchObject({
+      start: "2026-12-03",
+      end: "2026-12-07",
+    });
+  });
+
+  it("keeps a bare month a whole month", () => {
+    expect(only("free in november")).toMatchObject({
+      start: "2026-11-01",
+      end: "2026-11-30",
+    });
+  });
+
+  it("does not mistake a duration for a day range", () => {
+    // "3-4 days in Dec" is how long, not when.
+    const parsed = parseAvailabilityMessage("free 3-4 days in dec", ctx);
+    if (parsed && parsed.declarations.length > 0) {
+      expect(parsed.declarations[0]).toMatchObject({
+        start: "2026-12-01",
+        end: "2026-12-31",
+      });
+    }
+  });
+
+  it("declines a day it can see but cannot resolve", () => {
+    // Better one LLM call than confidently claiming all of November.
+    expect(parseAvailabilityMessage("cmi nov 20, 22 and 25", ctx)).toBeNull();
+  });
+
+  it("rejects an impossible day rather than guessing", () => {
+    const parsed = parseAvailabilityMessage("cmi 45 nov", ctx);
+    expect(parsed?.declarations ?? []).not.toContainEqual(
+      expect.objectContaining({ start: "2026-11-01", end: "2026-11-30" }),
+    );
+  });
+});
+
+/**
+ * National Service is a hard travel bar, not a preference. An NSman on
+ * mobilisation manning cannot leave the country, so a trip planned over those
+ * dates is not merely inconvenient — it is impossible for him.
+ */
+describe("NS obligations block travel", () => {
+  const ctx = {
+    today: "2026-08-17" as const,
+    horizonStart: "2026-11-01" as const,
+    horizonEnd: "2027-03-31" as const,
+    destination: null,
+  };
+
+  it("reads mob manning as unavailable, however it is spelled", () => {
+    for (const text of [
+      "first 3 wks of jan i got mob mannin",
+      "first 3 weeks of jan i got mob manning",
+      "first 3 weeks of jan, mobilisation manning",
+    ]) {
+      const parsed = parseAvailabilityMessage(text, ctx);
+      expect(parsed?.declarations, text).toEqual([
+        { state: "UNAVAILABLE", start: "2027-01-01", end: "2027-01-21" },
+      ]);
+    }
+  });
+
+  it("covers the other NS shorthands", () => {
+    for (const term of ["ops manning", "mob ex", "ict", "reservist", "in camp"]) {
+      const parsed = parseAvailabilityMessage(`${term} in nov`, ctx);
+      expect(parsed?.declarations[0], term).toMatchObject({
+        state: "UNAVAILABLE",
+      });
+    }
+  });
+});
+
+/**
+ * These were declined outright before — safe, but the phrasings are far too
+ * common to keep paying an LLM call for, and when the extractor is down a
+ * decline loses the constraint entirely.
+ */
+describe("sub-periods narrow instead of declining", () => {
+  const ctx = {
+    today: "2026-08-17" as const,
+    horizonStart: "2026-11-01" as const,
+    horizonEnd: "2027-03-31" as const,
+    destination: null,
+  };
+
+  const range = (text: string) => {
+    const parsed = parseAvailabilityMessage(text, ctx);
+    expect(parsed, text).not.toBeNull();
+    return parsed!.declarations[0];
+  };
+
+  it("counts weeks from the start", () => {
+    expect(range("reservist first two weeks of nov")).toMatchObject({
+      start: "2026-11-01",
+      end: "2026-11-14",
+    });
+  });
+
+  it("counts weeks from the end", () => {
+    expect(range("cmi last week of dec")).toMatchObject({
+      start: "2026-12-25",
+      end: "2026-12-31",
+    });
+  });
+
+  it("splits halves on the real month length", () => {
+    expect(range("free first half of jan")).toMatchObject({
+      start: "2027-01-01",
+      end: "2027-01-16",
+    });
+  });
+
+  it("applies the stated early/mid/late convention", () => {
+    expect(range("free early nov")).toMatchObject({
+      start: "2026-11-01",
+      end: "2026-11-10",
+    });
+    expect(range("busy end of december")).toMatchObject({
+      start: "2026-12-21",
+      end: "2026-12-31",
+    });
+  });
+
+  it("still declines a qualifier it cannot place", () => {
+    // "before the 20th" is a boundary, not a span we can name confidently.
+    expect(parseAvailabilityMessage("cmi before the 20th of nov", ctx)).toBeNull();
+  });
+
+  it("leaves an unqualified month whole", () => {
+    expect(range("free in november")).toMatchObject({
+      start: "2026-11-01",
+      end: "2026-11-30",
+    });
   });
 });

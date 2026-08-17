@@ -656,6 +656,45 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): notes stop swallowing dates; days stop widening to months
+
+Live group testing: the bot reacted ✍ to a member's message but `/dates` never
+changed. Two independent bugs, found by probing the parsers with real phrasings.
+
+**Notes were terminal.** The opinion branch recorded a note and `return`ed,
+unlike every neighbouring branch, which first checks the message isn't also
+availability. People bundle the two constantly — *"free in Nov but budget's
+tight"*, *"I can afford 10 days of leave"* — and the note branch ate the dates
+while the ✍ told the group they had landed. Notes are now **additive**:
+recorded, then execution continues to availability and, if needed, the LLM.
+A single `finish()` acks once however many signals one message carried.
+
+**Explicit days widened to whole months.** `"can't do 20-25 nov"` was recorded
+as *all of November* — the exact over-claim the grammar exists to prevent, and
+invisible to the person who wrote it. Day ranges now resolve exactly, in either
+order, with ordinals. Three guards keep the failure mode pointed at declining:
+a day we can see but cannot place (`"nov 20, 22 and 25"`) declines rather than
+taking the first; an impossible day declines; and a span that continues into
+another month (`"dec 20th till jan 2nd"`) stands aside for the general parser
+rather than claiming its first half.
+
+**Sub-periods resolve instead of declining.** `"first 3 wks of jan"`,
+`"last week of dec"`, `"early nov"` were all handed to the LLM. That was safe
+when it was the only safe option, but the phrasings are too common to keep
+paying for — and with the extractor down, declining loses the constraint
+outright. Counted spans and halves are arithmetic; the vague ones commit to a
+stated convention (early = 1st–10th, mid = 11th–20th, late = 21st–end) rather
+than pretending to precision nobody has. Anything unplaceable still declines.
+
+**NS is a travel bar, not a preference.** Founder-reported: *"first 3 wks of jan
+i got mob mannin"*. An NSman on mobilisation manning cannot leave the country,
+so this is hard unavailability, and a trip built over it is impossible for him
+rather than merely awkward. `mob manning` / `mob mannin` / `mobilisation
+manning` / `ops manning` / `mob ex` / `high key` / `low key` / `recalled` join
+the existing reservist/ICT vocabulary.
+
+---
+
 ## Decision (2026-08-17): tell the difference between a bad minute and a dead extractor
 
 Live group testing surfaced a silent bot. The cause was an exhausted OpenAI
