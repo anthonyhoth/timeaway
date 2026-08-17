@@ -153,6 +153,57 @@ function shiftYears(period: FoundPeriod, years: number): FoundPeriod {
 }
 
 /**
+ * Resolve a date reference by **specificity, not by parser order**.
+ *
+ * The chain used to be a plain `??` cascade, so whichever parser ran first won
+ * — and the broadest parser ran first. "next year dec" matched "next year" and
+ * returned the whole of 2027, never looking at "dec"; "next month first week"
+ * returned all of September. In both the two readings are not rivals at all:
+ * the broad one says *which year or month* and the narrow one says *where
+ * inside it*.
+ *
+ * So a broad match is treated as **context** rather than an answer. It supplies
+ * the year (and, when it is itself a single month, the month) to the narrower
+ * parsers, and is used as the answer only when nothing narrower is found.
+ *
+ * The narrower reading must fall **inside** the broad one to win. "next week
+ * nov" is contradictory rather than nested, and there the stated scope stands
+ * — preferring the fragment would be inventing a resolution to a conflict the
+ * speaker will have to settle anyway.
+ */
+function resolveBySpecificity(text: string, today: string): FoundPeriod | null {
+  const scope = findFuzzyPeriod(text, today) ?? findRelativePeriod(text, today);
+
+  const yearHint = scope ? Number(scope.range.start.slice(0, 4)) : undefined;
+  // Only a single month can host a "first week" — a whole year cannot.
+  const within =
+    scope && scope.range.start.slice(0, 7) === scope.range.end.slice(0, 7)
+      ? scope.range
+      : undefined;
+
+  const narrower =
+    // Ahead of the whole-month matcher: "first 3 weeks of Jan" must narrow to
+    // those days, not widen to all of January.
+    findSubPeriod(text, today, yearHint, within) ??
+    findMonthRange(text, today, yearHint);
+
+  if (!scope) {
+    // Last stop before the LLM, and only when nothing else read the message.
+    // Chrono is eager: it reads "next week" as a single day, which is nested
+    // inside the correct week and would otherwise win the specificity test by
+    // being wrong in the right direction.
+    return narrower ?? findChronoPeriod(text, today);
+  }
+  if (!narrower) return scope;
+  if (!narrower) return scope;
+
+  const nested =
+    narrower.range.start >= scope.range.start &&
+    narrower.range.end <= scope.range.end;
+  return nested ? narrower : scope;
+}
+
+/**
  * Resolve the date a message refers to, preferring an answer that lands
  * inside the trip's own window.
  *
@@ -167,17 +218,7 @@ function findDateReference(
   horizonStart?: string | null,
   horizonEnd?: string | null,
 ): FoundPeriod | null {
-  const found =
-    findFuzzyPeriod(text, today) ??
-    findRelativePeriod(text, today) ??
-    // Ahead of the whole-month matcher: "first 3 weeks of Jan" must narrow to
-    // those days, not widen to all of January.
-    findSubPeriod(text, today) ??
-    findMonthRange(text, today) ??
-    // Last stop before the LLM. Every Singapore-specific reading has already
-    // had its turn, so this only sees the general shapes our grammar has no
-    // opinion about — "dec 20th till jan 2nd", "3/11", "next fri to sun".
-    findChronoPeriod(text, today);
+  const found = resolveBySpecificity(text, today);
   if (!found || !horizonStart || !horizonEnd) return found;
 
   const overlaps = (p: FoundPeriod) =>

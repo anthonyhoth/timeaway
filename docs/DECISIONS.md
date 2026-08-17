@@ -656,6 +656,50 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): resolve dates by specificity, not by parser order
+
+Founder: *"Why does 'next year dec im free too' parse as 1 Jan – 31 Dec 2027?
+Correct the underlying engine error to not have similar errors."*
+
+The resolution chain was a plain `??` cascade:
+
+    findFuzzyPeriod ?? findRelativePeriod ?? findSubPeriod ?? findMonthRange ?? chrono
+
+Whichever parser matched first won — and the **broadest parser ran first**. So
+"next year" returned all of 2027 and "dec" was never looked at. The same fault
+made "next month first week" return the whole of September.
+
+The framing that fixes the class, not the instance: **the two readings were
+never rivals.** "Next year" says *which year*; "dec" says *where inside it*.
+Treating them as competitors meant the less informative one always won, because
+it was listed first.
+
+A broad match is now **context, not an answer**. It supplies the year to the
+narrower parsers, and — when it is itself a single month — the month, which is
+what lets "next month first week" resolve. It is used as the answer only when
+nothing narrower exists. `findMonthRange` has always taken a `yearHint`; nothing
+was feeding it.
+
+Two guards make it safe:
+
+  * **The narrower reading must nest inside the broad one.** "next week nov" is
+    contradictory rather than nested, so the stated scope stands. Preferring the
+    fragment would invent a resolution to a conflict only the speaker can settle.
+  * **Chrono is excluded from the contest.** It is eager, and reads "next week"
+    as a single day — nested inside the correct week, so it would have won the
+    specificity test *by being wrong in the right direction*. It stays the last
+    resort it was designed to be: consulted only when nothing else read the
+    message at all.
+
+This is the fourth over-claim of the same family (day ranges widening to
+months, "a week in Dec" claiming December, multi-span dropping all but the
+first). They share a cause: **a component answering confidently about
+information it did not have.** The specificity rule is the general form of the
+correction — the most informative reading wins, and a less informative one that
+also matched becomes context for it.
+
+---
+
 ## Decision (2026-08-17): several periods in one message
 
 Founder: *"free in oct last 2 weeks, nov 1st week and last week and dec 3rd

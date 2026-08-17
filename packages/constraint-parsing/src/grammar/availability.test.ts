@@ -463,3 +463,75 @@ describe("AL as annual leave", () => {
     expect(parse("Al 5 mins away")?.maxLeaveDays ?? null).toBeNull();
   });
 });
+
+/**
+ * The engine error behind "next year dec" → all of 2027.
+ *
+ * The resolution chain was a `??` cascade, so whichever parser ran first won —
+ * and the broadest ran first. The two readings were never rivals: "next year"
+ * says which year, "dec" says where inside it. A broad match is context, not
+ * an answer.
+ */
+describe("date references resolve by specificity, not parser order", () => {
+  const wide = {
+    today: "2026-08-17",
+    horizonStart: "2026-08-01",
+    horizonEnd: "2027-12-31",
+  };
+  const at = (text: string) =>
+    parseAvailabilityMessage(text, wide)?.declarations[0];
+
+  it("lets a year give its year to a month", () => {
+    expect(at("next year dec im free too")).toMatchObject({
+      state: "AVAILABLE",
+      start: "2027-12-01",
+      end: "2027-12-31",
+    });
+    expect(at("free next year june")).toMatchObject({
+      start: "2027-06-01",
+      end: "2027-06-30",
+    });
+  });
+
+  it("lets a month give its month to a week", () => {
+    // Previously all of September.
+    expect(at("im free next month first week")).toMatchObject({
+      start: "2026-09-01",
+      end: "2026-09-07",
+    });
+  });
+
+  it("narrows twice over when both are stated", () => {
+    expect(at("free next year first 2 weeks of dec")).toMatchObject({
+      start: "2027-12-01",
+      end: "2027-12-14",
+    });
+  });
+
+  it("still answers with the broad period when nothing narrows it", () => {
+    expect(at("free next year")).toMatchObject({
+      start: "2027-01-01",
+      end: "2027-12-31",
+    });
+    expect(at("free next month")).toMatchObject({
+      start: "2026-09-01",
+      end: "2026-09-30",
+    });
+  });
+
+  it("keeps chrono out of the specificity contest", () => {
+    // Chrono reads "next week" as a single day, which is nested inside the
+    // right week and would win by being wrong in the right direction.
+    expect(at("free next week")).toMatchObject({
+      start: "2026-08-24",
+      end: "2026-08-30",
+    });
+  });
+
+  it("keeps the stated scope when the two conflict rather than nest", () => {
+    // "next week nov" is contradictory, not nested; inventing a resolution
+    // would settle a conflict only the speaker can.
+    const parsed = at("free next week nov");
+    expect(parsed?.start.slice(0, 7)).toBe("2026-08");
+  });
+});
