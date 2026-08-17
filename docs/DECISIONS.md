@@ -656,6 +656,54 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): Chrono over Duckling, guarded, beneath the Singapore layers
+
+Founder asked to evaluate Duckling against Chrono and adopt one, keeping the
+Singapore-localised handling separate.
+
+**Chrono.** Duckling's grammar is larger, but the cost is structural: it is
+Haskell, ships as an HTTP service, and would mean a second container, a network
+hop on the message hot path, and a runtime nobody here maintains — directly
+against a deploy story whose first rule is *run one instance*. (Worth noting
+the npm package named `duckling` is an unrelated duck-typing library; Facebook's
+is not on npm at all.) Chrono is TypeScript, in-process, MIT, **zero
+dependencies**. Most of what Duckling adds is locales and languages we do not
+serve.
+
+**`en.GB`, not `en.casual`.** Not stylistic. Singapore writes DD/MM, and the
+locales disagree on precisely the input a Singaporean is most likely to type:
+
+    "3/11"    en.GB → 3 November      en.US → 11 March
+
+**Chrono is guarded, not trusted.** Probing it against real phrasings found
+three ways it would have corrupted availability outright:
+
+| Input | Chrono alone | Why it is rejected |
+| --- | --- | --- |
+| `nov 20, 22 and 25` | year **2022** | reads a day as a year |
+| `november` | 1 Nov, single day | discards the other 29 |
+| `max 2 days leave` | a date 2 days out | a leave cap is not a date |
+| `after the 15th` | 15 Nov, single day | half-open interval, wrong side |
+
+So results must state a day and a month, must not be a bare duration, must not
+be a lone pivot after a boundary word, and must fall between today and three
+years out. Two-ended spans are distinguished from single days, because only the
+former is trustworthy alongside a narrowing word.
+
+**Layering — the localisation stays ours.** Chrono runs *last*, after every
+Singapore-specific reading has had its turn: fuzzy periods (CNY, school
+holidays) → relative periods → sub-periods → months and day ranges → chrono →
+LLM. It cannot override a local reading, and it parses none of them anyway
+(`cny period`, `first 3 wks of jan`, `2nd week of jan` all return nothing). It
+earns its place on the general tail we used to pay the LLM for: `dec 20th till
+jan 2nd`, `3/11`, `next fri to sun`.
+
+Also read the calendar components chrono resolved rather than its `Date`:
+`.date()` is built in the host timezone, so ISO-formatting it can shift the day
+across midnight — on a UTC server that silently moves a Singaporean's dates.
+
+---
+
 ## Decision (2026-08-17): notes stop swallowing dates; days stop widening to months
 
 Live group testing: the bot reacted ✍ to a member's message but `/dates` never
