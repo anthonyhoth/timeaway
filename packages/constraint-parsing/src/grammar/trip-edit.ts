@@ -1,6 +1,7 @@
 import type { ISODate } from "@timeaway/shared";
 import type { DestinationEdit } from "./destination.js";
 import { parseDestinationEdit } from "./destination.js";
+import { statesPersonalConstraint } from "./availability.js";
 import { readProposal } from "./proposals.js";
 import { resolveHorizon } from "./horizon.js";
 import type { DateRange } from "./periods.js";
@@ -164,7 +165,10 @@ export function parseTripEdit(
   } = {},
 ): TripEdit | null {
   const text = rawText.trim();
-  if (ABOUT_THEMSELVES.test(text)) return null;
+  // A message about the speaker is never a change to the group's plan, however
+  // many dates it names. ABOUT_THEMSELVES caught only pronoun-adjacent phrasing;
+  // this catches the obligations people actually describe.
+  if (ABOUT_THEMSELVES.test(text) || statesPersonalConstraint(text)) return null;
 
   // Dates get proposed exactly the way destinations do — "how about December",
   // "December can?", "year end works", "why not next June" — so the same

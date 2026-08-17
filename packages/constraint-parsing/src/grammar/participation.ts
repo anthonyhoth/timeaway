@@ -12,11 +12,17 @@
  */
 export type ParticipationChange = "OUT" | "IN";
 
-const OUT =
+export const OUT_WORDS =
   /\b(?:count me out|leave me out|without me|not joining|won'?t join|can'?t join|cannot join|not going|not coming|sit(?:ting)? (?:this|it) (?:one )?out|skip(?:ping)? (?:this|it)(?: one)?|i'?m out|im out|go ahead without|you (?:all|guys) go|not for me|opt(?:ing)? out)\b/i;
 
-const IN =
-  /\b(?:count me in|i'?m in|im in|i'?m joining|im joining|i'?m coming|im coming|put me back|rejoin(?:ing)?|actually i'?m in)\b/i;
+/**
+ * "I'm in" must stand alone. Followed by anything it is usually the opposite —
+ * "I'm in a meeting", "I'm in camp", "I'm in office" — and those were being
+ * recorded as joining the trip. A bare "I'm in" ends the message, optionally
+ * with a particle or an exclamation.
+ */
+export const IN_WORDS =
+  /\b(?:count me in|i'?m joining|im joining|i'?m coming|im coming|put me back|rejoin(?:ing)?|i'?m back in|im back in)\b|\b(?:i'?m|im)\s+in(?=\s*(?:[!.]+|lah|leh|lor|sia|liao|too|also|already)?\s*$)/i;
 
 /** Anything naming a period is about availability, not participation. */
 const HAS_DATE_HINT =
@@ -33,7 +39,7 @@ export function parseParticipationChange(
 
   // Rejoining is checked first: "actually I'm in" contains no out-words, but
   // "I'm not out anymore" would trip both, and the later statement wins.
-  if (IN.test(text)) return "IN";
-  if (OUT.test(text)) return "OUT";
+  if (IN_WORDS.test(text)) return "IN";
+  if (OUT_WORDS.test(text)) return "OUT";
   return null;
 }

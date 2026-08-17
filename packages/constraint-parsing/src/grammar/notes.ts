@@ -26,12 +26,16 @@ const OBJECTION =
 const PREFERENCE =
   /\b(?:want to go|wanna go|would like|'?d like|prefer|'?d prefer|hoping for|vote for|keen on|keen for|push for)\b/i;
 
+// "Ex" is how Singaporeans say expensive, and was missing entirely — probably
+// the highest-frequency budget word in this market. "1k" shorthand and bare
+// figures ("flight alone already 800") were also invisible.
 const BUDGET_WORDS =
-  /\b(?:budget|expensive|pricey|costly|afford|affordable|cheap(?:er)?|broke|too much|save (?:up|money)|money(?:'s)? tight|tight on (?:cash|money|budget))\b/i;
+  /\b(?:budget|expensive|pricey|costly|afford|affordable|cheap(?:er)?|broke|too much|save (?:up|money)|money(?:'s)? tight|tight on (?:cash|money|budget)|too ex|damn ex|so ex|ex lah|atas|burn a hole|cheapest|price|prices|fare|fares)\b/i;
 
 // Amounts are matched without a trailing word boundary: "\b" after "\d"
 // fails on any multi-digit figure, so "under 1500" silently didn't match.
-const BUDGET_AMOUNT = /(?:\$\s?\d+|\b(?:under|below|within|max)\s+\$?\d+)/i;
+const BUDGET_AMOUNT =
+  /(?:\$\s?\d+|\b(?:under|below|within|around|about|roughly|max)\s+\$?\d+(?:\s*k)?\b|\b\d+\s*k\b)/i;
 
 const BUDGET = {
   test: (text: string) => BUDGET_WORDS.test(text) || BUDGET_AMOUNT.test(text),

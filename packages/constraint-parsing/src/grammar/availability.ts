@@ -244,6 +244,49 @@ function yearHintFor(ctx: ExtractionContext): number | undefined {
 }
 
 /**
+ * Is this message about a constraint on *the speaker*?
+ *
+ * Broader than `ABOUT_THEMSELVES` in trip-edit, which needed a pronoun sitting
+ * next to an availability word. Real obligations rarely look like that, and
+ * every one of these was being read as a request to **move the trip to the
+ * dates being blocked out**:
+ *
+ *   "renovation starting dec i very tied up"   → move the trip to December
+ *   "blackout period nov to jan for my dept"   → make the trip Nov–Jan
+ *   "working shift dec 1 to 7"                 → make the trip those 7 days
+ *   "just started new job cannot take leave until dec" → move it to December
+ *
+ * The last is the sharpest: December is the first month they *can* travel, and
+ * the trip was being pointed at the one month they had ruled out.
+ *
+ * Used as a veto, not a claim: a message about the speaker is never a change to
+ * the group's plan, whatever dates it happens to mention.
+ */
+export function statesPersonalConstraint(rawText: string): boolean {
+  const text = stripParticles(rawText);
+  return (
+    NEGATIVE.test(text) ||
+    BLOCKING_COMMITMENT.test(text) ||
+    OBLIGATION.test(text) ||
+    OBJECTION.test(text)
+  );
+}
+
+/**
+ * Work and life commitments that block travel without using the word "can't":
+ * a roster, a leave freeze, a renovation, a posting.
+ */
+const OBLIGATION =
+  /\b(?:tied up|blackout|black out|on shift|night shift|shift work|working|work(?:ing)? on|on duty|on call|oncall|standby|stand by|probation|posted|renovation|reno|moving house|confinement|got stuff|got things|busy period|peak period|year end closing|audit|deadline|apply(?:ing)? (?:for )?(?:al|leave)|applied (?:for )?(?:al|leave)|take leave|taking leave|broke|no money|no budget|retract)\b/i;
+
+/**
+ * Arguing against a period rather than proposing one. "Nov too rainy" was
+ * being read as a request to move the trip *to* November.
+ */
+const OBJECTION =
+  /\b(?:disagree|too (?:rainy|hot|cold|wet|crowded|peak|ex|expensive|pricey|far|short|long)|rainy season|monsoon|peak season|not keen|sian)\b/i;
+
+/**
  * Which way a message leans, with no date attached.
  *
  * Exported so the underspecified-span path can reuse exactly this reading:

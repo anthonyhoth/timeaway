@@ -21,7 +21,9 @@ import { findSubPeriod } from "./subperiods.js";
  * cannot be resolved makes the whole message decline. Half a list is not a
  * safer answer than none, because nobody can see which half was kept.
  */
-const SEGMENT_SPLIT = /\s*(?:,|;|\band\b|&|\+|\/)\s*/i;
+// "or" splits too: "free nov or dec" offers both, and dropping everything
+// after the first segment lost half the answer while the sender saw a ✍.
+const SEGMENT_SPLIT = /\s*(?:,|;|\band\b|\bor\b|&|\+|\/)\s*/i;
 
 /** Tokens that mean a segment is making a claim about dates. */
 const DATE_BEARING =

@@ -15,6 +15,11 @@
  */
 
 import {
+  REMOVE_WORDS,
+  REPLACE_WORDS,
+} from "./grammar/destination.js";
+import { IN_WORDS, OUT_WORDS } from "./grammar/participation.js";
+import {
   ADDITIVE_MARKER,
   ASSESSMENT_FRAME,
   PROPOSAL_FRAME,
@@ -58,6 +63,16 @@ const PATTERNS: RegExp[] = [
   ASSESSMENT_FRAME,
   ADDITIVE_MARKER,
   PROPOSAL_TAG,
+  // Shared for the same reason: "korea instead lah" is a *destructive* replace
+  // that was discarded before any parser saw it, as were "drop japan", "japan
+  // is out" and "im rejoining".
+  REPLACE_WORDS,
+  REMOVE_WORDS,
+  IN_WORDS,
+  OUT_WORDS,
+  // "Flexible" lives in the availability grammar's open-ended vocabulary and
+  // nowhere here, so "up to you all i flexible" was dropped.
+  /\b(?:flexible|flexi|any ?time|when ?ever|any ?day|no preference|up to (?:you|u|yall|y'all|the group)|dun ?mind|don'?t mind)\b/i,
   // Joining or sitting the trip out. Found by the contract test below: the
   // participation parser has always read "count me out", and the gate has
   // always thrown it away first.

@@ -40,6 +40,18 @@ const PERIODS: {
     resolve: (y) => ({ start: iso(y, 11, 15), end: iso(y + 1, 1, 5) }),
   },
   {
+    // Chinese New Year: the biggest travel-blocking date in this segment and
+    // absent from the grammar entirely. Family obligations make it a hard no
+    // for many, and a hard yes for the long weekend around it.
+    pattern: /\b(?:cny|chinese new year|lunar new year|new year period|reunion dinner)\b/i,
+    label: "cny",
+    // 2027: 6 Feb. The block people mean runs from the eve through the
+    // fortnight of visiting, which is when nobody is free to travel.
+    resolve: (y) => (y === 2027
+      ? { start: iso(2027, 2, 5), end: iso(2027, 2, 20) }
+      : { start: iso(y, 1, 28), end: iso(y, 2, 12) }),
+  },
+  {
     pattern: /\bschool[-\s](?:holidays?|hols?)\b/i,
     label: "school holidays",
     // Resolved to the year-end block; the mid-year block is picked by the

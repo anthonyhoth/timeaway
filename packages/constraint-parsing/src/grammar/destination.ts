@@ -29,24 +29,29 @@ export interface DestinationEdit {
   destinations: string[];
 }
 
-const ADD_WORDS =
+export const ADD_WORDS =
   /\b(?:also|too|as well|add|another|what about|how about|consider|include)\b/i;
-const REPLACE_WORDS =
+export const REPLACE_WORDS =
   /\b(?:instead|rather than|change (?:it )?to|switch to|actually)\b/i;
-const REMOVE_WORDS =
+export const REMOVE_WORDS =
   /\b(?:drop|remove|cross off|forget|scrap|is out|are out|no longer|not)\b/i;
 
 function detectOp(text: string): DestinationEditOp | null {
   // Replace is checked first: "actually let's do Korea instead" carries both
   // an add-ish and a replace-ish word, and replace is the stronger claim.
   if (REPLACE_WORDS.test(text)) return "REPLACE";
-  if (ADD_WORDS.test(text)) return "ADD";
+
+  // Removal outranks addition, because the add vocabulary is weak words that
+  // turn up everywhere. "Remove bangkok also" was read as an *addition* — the
+  // exact opposite — and "drop japan too ex" vanished entirely, the "too" of
+  // "too expensive" being taken for the additive "too".
   // The bare "not" in REMOVE_WORDS also sits inside two common *positive*
   // constructions — "why not Vietnam" proposes it, "hainan not bad" praises it
   // — and both were being read as removals, then silently dropped for naming a
   // place that was not on the list.
   const notIsPositive = /\bwhy\s+not\b|\bnot\s+bad\b|\bor\s+not\b/i.test(text);
   if (REMOVE_WORDS.test(text) && !notIsPositive) return "REMOVE";
+  if (ADD_WORDS.test(text)) return "ADD";
 
   // Nobody talks in edit words. "Korea is fine too", "how about Taiwan",
   // "Bali can?" are how a destination actually gets suggested, and all of them
@@ -55,6 +60,9 @@ function detectOp(text: string): DestinationEditOp | null {
   if (readProposal(text).proposes) return "ADD";
   return null;
 }
+
+const escapeName = (name: string) =>
+  name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const sameName = (a: string, b: string) =>
   a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -103,6 +111,15 @@ export function parseDestinationEdit(
   }
 
   if (op === "REMOVE") {
+    // Matched against the raw text rather than the extracted residue. A removal
+    // names a place the trip already has, so we can look for it directly — and
+    // extraction was mangling exactly the messages people actually send:
+    // "drop japan too ex" left "Japan Ex", which matched nothing and dropped
+    // nothing.
+    const mentioned = currentDestinations.filter((c) =>
+      new RegExp(`\\b${escapeName(c)}\\b`, "i").test(rawText),
+    );
+    if (mentioned.length > 0) return { op, destinations: mentioned };
     const known = named.filter((n) =>
       currentDestinations.some((c) => sameName(c, n)),
     );

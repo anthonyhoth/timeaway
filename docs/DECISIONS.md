@@ -656,6 +656,77 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): what 183 simulated messages and a research pass found
+
+Founder asked for the engine to be improved against real trip-deciding talk,
+using subagents. Two ran: one put 183 simulated Singaporean group-chat messages
+through every parser; one researched how groups actually talk when deciding.
+
+**Sourcing caveat, recorded because it affects how much weight the research
+carries:** Reddit is blocked to our crawler *and* by browsing policy. The
+research agent did not route around it — correctly — and substituted Ask
+MetaFilter, The Independent SG (which republishes r/singapore threads verbatim)
+and HardwareZone. The Singapore-specific vocabulary is well sourced; the
+"what real Redditors say" claim is weaker than asked for.
+
+### The over-claims, worst first
+
+**A personal obligation was moving the trip *to* the blocked dates.** The guard
+required a pronoun adjacent to an availability word, and real obligations are
+not phrased that way. Nine cases, all landing on the organiser as a plausible
+suggestion:
+
+    "renovation starting dec i very tied up"  → move the trip to December
+    "blackout period nov to jan for my dept"  → make the trip Nov–Jan
+    "working shift dec 1 to 7"                → make the trip those seven days
+
+The sharpest was *"just started new job cannot take leave until dec"*, where
+December is the first month they **can** travel and the trip was being aimed at
+the months they had ruled out. A message about the speaker is now a veto on
+trip edits, however many dates it names — including objections
+(*"nov too rainy"* was moving the trip to November).
+
+**An inverted operation.** *"Remove bangkok also"* was an **ADD**: the weak
+additive "also" was checked before the explicit verb. And *"drop japan too ex"*
+vanished entirely, the "too" of "too expensive" being read as the additive.
+Removals now outrank additions, and are matched against the trip's own
+destination list rather than extracted residue — which had produced "Japan Ex".
+
+**Numeric ranges collapsed to one day.** `12/12-15/12` reached chrono, which
+returned one of the two dates — sometimes the start, sometimes the end. A
+four-day block recorded as a single day, in the most common way people type
+dates. Now parsed directly, day-first, and crossing the new year correctly.
+
+**"Or" lists lost everything after the first.** *"I can do either nov or dec"*
+recorded November only, and the sender saw a ✍ confirming it.
+
+### From the research
+
+**"I'm in" collides with "I'm in a meeting".** Someone stating they were busy
+was recorded as joining the trip. "I'm in" now has to stand alone.
+
+**"Ex" was missing** — the standard Singaporean word for expensive, and
+probably the highest-frequency budget word in this market.
+
+**Chinese New Year was absent from the entire grammar**, despite being the
+single biggest travel-blocking period here.
+
+**The hedge arrives in the next message**, not the same one — "I'm in", then
+"as long as it's not june". This is exactly the continuation window built
+earlier today, and validates it.
+
+**Silence is the dominant signal and cannot be parsed.** Of ten "definites and
+maybes", roughly two turn up. That is not a parsing problem — it is why UNKNOWN
+is a first-class state and why the nudge exists. Related: budget mismatch
+produces *silent* dropout, so the parser usually sees absence rather than an
+objection.
+
+One warning worth keeping: *"the more structured the event, the fewer people
+you should expect to participate"*. Every question the bot asks is friction,
+which argues for precision over recall in what it asks back.
+
+---
+
 ## Decision (2026-08-17): leave is a budget to spend, not a cost to minimise
 
 Founder, from a live trip: three days of annual leave, free for the middle

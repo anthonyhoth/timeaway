@@ -69,6 +69,26 @@ export function findMonthRange(
     }
   }
 
+  // Numeric ranges: "12/12-15/12", "5/12 to 8/12". Written without spaces this
+  // is how most people type dates, and it was reaching chrono, which returned
+  // *one* of the two dates — sometimes the start, sometimes the end — so a
+  // four-day block was silently recorded as a single day.
+  const numeric = new RegExp(
+    `\\b(\\d{1,2})[/.](\\d{1,2})\\s*(?:to|till|until|-|–|—)\\s*(\\d{1,2})[/.](\\d{1,2})\\b`,
+    "i",
+  ).exec(text);
+  if (numeric) {
+    const range = resolveNumericRange(numeric, currentYear, today);
+    if (range) {
+      return {
+        range,
+        note: "numeric range",
+        start: numeric.index,
+        end: numeric.index + numeric[0].length,
+      };
+    }
+  }
+
   // Named days come first: "20-25 Nov" must resolve to those six days. Falling
   // through to the bare-month matcher turned a long-weekend constraint into a
   // whole-month one — the exact over-claim the grammar exists to avoid.
@@ -126,6 +146,34 @@ export function findMonthRange(
     start: match.index,
     end: match.index + match[0].length,
   };
+}
+
+/**
+ * Day-first, because Singapore writes DD/MM — the same reason chrono is
+ * configured to en.GB. Reading 12/12–15/12 the other way would be invisible
+ * until it landed in the wrong month.
+ */
+function resolveNumericRange(
+  match: RegExpExecArray,
+  currentYear: number,
+  today: ISODate,
+): { start: ISODate; end: ISODate } | null {
+  const [d1, m1, d2, m2] = match.slice(1, 5).map(Number) as [number, number, number, number];
+  if ([m1, m2].some((m) => m < 1 || m > 12)) return null;
+
+  const build = (day: number, month: number, year: number) => {
+    if (day < 1 || day > lastDay(year, month)) return null;
+    return iso(year, month, day);
+  };
+
+  // The range may cross a new year: 28/12–3/1 is one trip, not a backwards one.
+  const startYear = m1 >= Number(today.slice(5, 7)) ? currentYear : currentYear + 1;
+  const start = build(d1, m1, startYear);
+  if (!start) return null;
+  const endYear = m2 >= m1 ? startYear : startYear + 1;
+  const end = build(d2, m2, endYear);
+  if (!end || end < start) return null;
+  return { start, end: end };
 }
 
 const DAY = "(\\d{1,2})(?:st|nd|rd|th)?";
