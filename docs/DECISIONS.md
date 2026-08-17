@@ -656,6 +656,51 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-17): leave is a budget to spend, not a cost to minimise
+
+Founder, from a live trip: three days of annual leave, free for the middle
+fortnight of December, planning Hainan/Korea/Japan — and Timeaway offered three
+**three-day weekends costing one leave day each**. The five-day windows costing
+exactly the three days available were ranked below them.
+
+The comparator had `leaveDays` ascending in second place and `days` ascending
+as its final tiebreak. Both pulled toward the smallest possible trip, so the
+engine reliably recommended the *cheapest* window rather than the *best* one —
+and the leave-stacking this product exists to find was ranked away.
+
+The cap is already a hard constraint, enforced in feasibility. Everything that
+reaches the ranking is therefore affordable, and among affordable trips more
+days away is simply more trip. So **length now outranks cost**, with cheaper
+breaking ties between equal lengths, since the same trip for less leave is
+strictly better.
+
+The founder's own case, before and after: 3-day weekends for 1 leave day →
+**9–13 Dec, five days away for three days off**. Wednesday to Sunday: three
+working days bought a five-day trip.
+
+## Decision (2026-08-17): a stated bound is not a fixed range
+
+Same report: a friend said *"I want a minimum 5 days trip"* and nothing moved.
+
+Two faults. It matched no licence at all — no edit word, no planning phrase —
+so `parseTripEdit` declined before looking at the number. And had it looked,
+the bare-number fallback would have returned `{min: 5, max: 5}`, pinning a 3–7
+day trip to exactly five rather than widening its floor to **5–7**.
+
+Duration edits now carry either end alone, and the missing end is taken from
+the trip. Naming a length is its own licence — "4–6 days" needed no other
+phrasing either. Two details worth the care:
+
+  * **"No more than 4 days" contains "more than"**, and was being read as a
+    floor — inverting the constraint exactly. Negated comparatives are matched
+    first.
+  * **"Got 5 days leave" is a budget, not a length.** A bare number reads as a
+    duration only when no leave vocabulary is present; otherwise a leave cap
+    would silently rewrite how long the whole trip is. That confusion has
+    already produced two bugs in this codebase, in the other direction.
+
+---
+
 ## Decision (2026-08-17): proposals, as conversation analysis describes them
 
 Founder: *"'Korea is fine too' should add Korea. Add these deterministic rules

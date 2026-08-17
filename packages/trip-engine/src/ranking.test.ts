@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AvailabilityDeclaration } from "./availability.js";
 import type { WindowParticipant } from "./feasibility.js";
 import { evaluateWindow, evaluateWindows } from "./feasibility.js";
-import { SG_PUBLIC_HOLIDAYS_2026 } from "./holidays-sg.js";
+import { SG_PUBLIC_HOLIDAYS, SG_PUBLIC_HOLIDAYS_2026 } from "./holidays-sg.js";
 import {
   blockedParticipantIds,
   rankForDisplay,
@@ -127,23 +127,34 @@ describe("rankWindows — proof-scenario shape", () => {
     expect(ranked.every((r) => r.window.start >= "2026-11-07")).toBe(true);
   });
 
-  it("puts the all-available, holiday-stacked window first", () => {
-    // 7–10 Nov: everyone available, Sat+Sun(Deepavali)+Mon(observed)+Tue = 1 leave day.
+  it("puts the longest all-available window first", () => {
+    // 7–11 Nov: everyone available, 5 days for 2 leave. It outranks the
+    // 4-day 7–10 Nov costing 1 leave, deliberately — see the reversal below.
     expect(ranked[0]!.window).toEqual({
       start: "2026-11-07",
-      end: "2026-11-10",
-      days: 4,
+      end: "2026-11-11",
+      days: 5,
     });
-    expect(ranked[0]!.leaveDays).toBe(1);
     expect(ranked[0]!.counts.available).toBe(3);
   });
 
-  it("orders the rest by leave, then start, among all-available windows", () => {
-    // Remaining all-available windows: 7–11 (2 leave) and 8–11 (2 leave);
-    // earlier start breaks the tie.
-    expect(ranked[1]!.window.start).toBe("2026-11-07");
-    expect(ranked[1]!.window.days).toBe(5);
-    expect(ranked[2]!.window).toMatchObject({ start: "2026-11-08", days: 4 });
+  /**
+   * Reversed on founder report. Ranking cheapest-first offered someone with
+   * three days of leave, free for a fortnight, a run of three-day weekends
+   * costing one day each — while the five-day trips costing exactly their
+   * three sat below the fold. Leave is a budget to spend, not a cost to
+   * minimise, and the cap already guarantees affordability.
+   */
+  it("prefers a longer trip over a cheaper one, then cheaper as a tiebreak", () => {
+    const days = ranked.slice(0, 3).map((r) => r.window.days);
+    expect(days[0]).toBeGreaterThanOrEqual(days[1]!);
+    expect(days[1]).toBeGreaterThanOrEqual(days[2]!);
+
+    // Among windows of equal length, less leave still wins.
+    const fourDay = ranked.filter((r) => r.window.days === 4 && r.counts.available === 3);
+    expect(fourDay.map((r) => r.leaveDays)).toEqual(
+      [...fourDay.map((r) => r.leaveDays)].sort((a, b) => a - b),
+    );
   });
 
   it("ranks roster-pending windows below clear-cut ones, still feasible", () => {
@@ -233,5 +244,69 @@ describe("conflict resolution — near misses", () => {
     const result = rankForDisplay(evaluated);
     expect(result.feasible).toEqual([]);
     expect(result.nearMisses.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Founder report. Three days of annual leave, free for the middle fortnight of
+ * December, and Timeaway offered three-day weekends costing one leave day —
+ * for a trip to Hainan, Korea or Japan. The five-day windows costing exactly
+ * the three days available were ranked below them.
+ *
+ * Leave is a budget to spend, not a cost to minimise. The cap is already a hard
+ * constraint, so everything ranked here is affordable, and among affordable
+ * trips more days away is more trip.
+ */
+describe("spending the leave budget rather than hoarding it", () => {
+  const traveller = [
+    {
+      id: "p1",
+      declarations: [
+        { state: "AVAILABLE" as const, start: "2026-12-09", end: "2026-12-22" },
+      ],
+      maxLeaveDays: 3,
+    },
+  ];
+
+  const best = (durationMinDays: number, durationMaxDays: number) => {
+    const windows = generateCandidateWindows({
+      horizonStart: "2026-12-09",
+      horizonEnd: "2026-12-22",
+      durationMinDays,
+      durationMaxDays,
+    });
+    return rankForDisplay(evaluateWindows(windows, traveller, SG_PUBLIC_HOLIDAYS))
+      .feasible[0]!;
+  };
+
+  it("offers the longest trip the leave allows, not the cheapest", () => {
+    const top = best(3, 7);
+    expect(top.window.days).toBe(5);
+    expect(top.leaveDays).toBe(3);
+  });
+
+  it("finds the leave stack — five days away for three days off", () => {
+    // 9–13 Dec is Wed–Sun: three working days bought a five-day trip.
+    expect(best(3, 7).window).toMatchObject({
+      start: "2026-12-09",
+      end: "2026-12-13",
+    });
+  });
+
+  it("never exceeds the cap while reaching for length", () => {
+    for (const window of rankForDisplay(
+      evaluateWindows(
+        generateCandidateWindows({
+          horizonStart: "2026-12-09",
+          horizonEnd: "2026-12-22",
+          durationMinDays: 3,
+          durationMaxDays: 7,
+        }),
+        traveller,
+        SG_PUBLIC_HOLIDAYS,
+      ),
+    ).feasible) {
+      expect(window.leaveDays).toBeLessThanOrEqual(3);
+    }
   });
 });

@@ -97,3 +97,59 @@ describe("planning the trip out loud", () => {
     expect(plan("i can't do december")).toBeNull();
   });
 });
+
+/**
+ * Founder report: a friend said "I want a minimum 5 days trip" and the range
+ * did not move. It matched nothing — no edit word, no planning phrase — and
+ * even if it had, the bare-number fallback would have pinned the trip to
+ * exactly 5 rather than widening the floor of a 3–7 day range to 5–7.
+ */
+describe("stating a trip length", () => {
+  const dur = (text: string) =>
+    parseTripEdit(text, "2026-08-17", [], {})?.duration ?? null;
+
+  it("reads a floor without touching the ceiling", () => {
+    for (const text of [
+      "I want a minimum 5 days trip",
+      "at least 5 days",
+      "5 days minimum",
+      "min 5 days",
+      "5 days or more",
+      "no less than 5 days",
+    ]) {
+      expect(dur(text), text).toEqual({ min: 5 });
+    }
+  });
+
+  it("reads a ceiling without touching the floor", () => {
+    for (const text of ["max 5 days", "at most 5 days", "up to 5 days"]) {
+      expect(dur(text), text).toEqual({ max: 5 });
+    }
+  });
+
+  it("does not invert a negated comparative", () => {
+    // "no more than" contains "more than", and was read as a floor — exactly
+    // reversing the constraint.
+    expect(dur("no more than 4 days")).toEqual({ max: 4 });
+    expect(dur("no longer than 4 days")).toEqual({ max: 4 });
+  });
+
+  it("still pins both ends when both are meant", () => {
+    expect(dur("4-6 days")).toEqual({ min: 4, max: 6 });
+    expect(dur("make it 5 days")).toEqual({ min: 5, max: 5 });
+    expect(dur("a week")).toEqual({ min: 7, max: 7 });
+    expect(dur("long weekend")).toEqual({ min: 3, max: 4 });
+  });
+
+  it("never mistakes a leave budget for a trip length", () => {
+    // "Got 5 days leave" is what someone can spend, not how long to go for.
+    // Reading it as a duration would silently rewrite the whole trip.
+    for (const text of [
+      "got 5 days leave",
+      "only got 3 days AL",
+      "i have 12 days leave",
+    ]) {
+      expect(dur(text), text).toBeNull();
+    }
+  });
+});

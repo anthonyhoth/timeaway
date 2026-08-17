@@ -14,6 +14,18 @@ import type { EvaluatedWindow } from "./feasibility.js";
 export function compareWindows(a: EvaluatedWindow, b: EvaluatedWindow): number {
   if (a.counts.available !== b.counts.available)
     return b.counts.available - a.counts.available;
+
+  // Longer wins before cheaper. Leave is a *budget to spend*, not a cost to
+  // minimise: the cap is already a hard constraint, so every window here is
+  // affordable, and among affordable trips more days away is simply more trip.
+  //
+  // Ranking cheapest-first produced the opposite — someone with three days of
+  // leave, free for a fortnight, was offered three-day weekends costing one
+  // day, while five-day trips costing exactly their three sat below the fold.
+  // That is the "leave hack" the product exists to find, ranked away.
+  if (a.window.days !== b.window.days) return b.window.days - a.window.days;
+
+  // Same length for less leave is strictly better, so efficiency breaks ties.
   if (a.leaveDays !== b.leaveDays) return a.leaveDays - b.leaveDays;
   if (a.counts.rosterPending !== b.counts.rosterPending)
     return a.counts.rosterPending - b.counts.rosterPending;

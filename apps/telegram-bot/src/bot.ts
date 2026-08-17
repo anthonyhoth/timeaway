@@ -1858,16 +1858,39 @@ export function createBot(token: string, deps: BotDeps): Bot {
       );
     }
     if (edit.horizon || edit.duration) {
+      // "Minimum 5 days" states a floor and nothing about the ceiling, so the
+      // other end is kept: a 3–7 day trip becomes 5–7, not exactly 5.
+      const duration = edit.duration
+        ? mergeDuration(edit.duration, trip)
+        : undefined;
+
       await setTripShape(deps.db, trip.id, {
         horizonStart: edit.horizon?.start,
         horizonEnd: edit.horizon?.end,
-        durationMinDays: edit.duration?.min,
-        durationMaxDays: edit.duration?.max,
+        durationMinDays: duration?.min,
+        durationMaxDays: duration?.max,
         // Someone asking for "make it 5 days" has chosen it, so the card must
         // stop calling the range a default.
         ...(edit.duration ? { durationDefaulted: false } : {}),
       });
     }
+  }
+
+  /**
+   * Combine a stated bound with the range already on the trip.
+   *
+   * The ends are kept consistent rather than left crossed: asking for a floor
+   * above the current ceiling raises the ceiling with it, because "at least 9
+   * days" on a 3–7 day trip means they want longer, not that they want nothing.
+   */
+  function mergeDuration(
+    edit: { min?: number; max?: number },
+    trip: Trip,
+  ): { min: number; max: number } {
+    const min = edit.min ?? trip.durationMinDays ?? DEFAULT_DURATION.min;
+    let max = edit.max ?? trip.durationMaxDays ?? DEFAULT_DURATION.max;
+    if (max < min) max = min;
+    return { min, max };
   }
 
   bot.callbackQuery(/^edit:(\d+)$/, async (ctx) => {
