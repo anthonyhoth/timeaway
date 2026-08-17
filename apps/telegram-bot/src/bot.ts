@@ -6,6 +6,7 @@ import {
   mightContainConstraint,
   parseAvailabilityMessage,
   parseDurationRange,
+  parseParticipantNote,
   parseParticipationChange,
   parseTripEdit,
   parseTripRequest,
@@ -15,6 +16,7 @@ import type { Db, Trip } from "@timeaway/database";
 import {
   addCalendarDeclaration,
   addNlDeclarations,
+  addParticipantNote,
   createTrip,
   listDeclarations,
   ensureParticipantForTelegramUser,
@@ -603,6 +605,34 @@ export function createBot(token: string, deps: BotDeps): Bot {
         }
         const afterChange = await getTripById(deps.db, trip.id);
         if (afterChange) await refreshTripCard(ctx, afterChange);
+        return;
+      }
+    }
+
+    // Opinions — objections, preferences, budget. Recorded and shown, never
+    // acted on, and checked before trip edits so a first-person "I'd rather
+    // not do Japan again" isn't executed as "drop Japan".
+    {
+      const note = parseParticipantNote(text);
+      if (note) {
+        const participant = await ensureParticipantForTelegramUser(
+          deps.db,
+          trip.id,
+          {
+            telegramUserId: String(ctx.from!.id),
+            displayName: [ctx.from!.first_name, ctx.from!.last_name]
+              .filter(Boolean)
+              .join(" "),
+          },
+        );
+        await addParticipantNote(deps.db, participant.id, note.kind, note.text);
+        try {
+          await ctx.react("✍");
+        } catch (error) {
+          console.error("reaction failed", error);
+        }
+        const afterNote = await getTripById(deps.db, trip.id);
+        if (afterNote) await refreshTripCard(ctx, afterNote);
         return;
       }
     }

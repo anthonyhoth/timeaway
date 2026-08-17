@@ -6,3 +6,4 @@ export * from "./horizon.js";
 export * from "./destination.js";
 export * from "./trip-edit.js";
 export * from "./participation.js";
+export * from "./notes.js";

@@ -3,6 +3,7 @@ import type { Db } from "../client.js";
 import type { Trip } from "../schema/index.js";
 import {
   availabilityDeclarations,
+  participantNotes,
   participants,
   trips,
   users,
@@ -15,6 +16,8 @@ export interface ParticipantPlanningState {
   /** Sitting this trip out — excluded from feasibility and from the counts. */
   optedOut: boolean;
   maxLeaveDays: number | null;
+  /** Opinions recorded but never acted on — verbatim, newest last. */
+  notes: { kind: string; text: string }[];
   /** Oldest first — the engine's latest-declaration-wins rule depends on it. */
   declarations: {
     state: "AVAILABLE" | "MAYBE" | "UNAVAILABLE" | "UNKNOWN";
@@ -71,6 +74,24 @@ export async function loadTripPlanningState(
     byParticipant.set(d.participantId, list);
   }
 
+  const noteRows = await db
+    .select({
+      participantId: participantNotes.participantId,
+      kind: participantNotes.kind,
+      text: participantNotes.originalText,
+    })
+    .from(participantNotes)
+    .innerJoin(participants, eq(participantNotes.participantId, participants.id))
+    .where(eq(participants.tripId, tripId))
+    .orderBy(asc(participantNotes.createdAt));
+
+  const notesByParticipant = new Map<string, { kind: string; text: string }[]>();
+  for (const n of noteRows) {
+    const list = notesByParticipant.get(n.participantId) ?? [];
+    list.push({ kind: n.kind, text: n.text });
+    notesByParticipant.set(n.participantId, list);
+  }
+
   return rows.map((row) => ({
     participantId: row.participantId,
     displayName: row.userName ?? row.inviteName ?? "Someone",
@@ -78,6 +99,7 @@ export async function loadTripPlanningState(
     optedOut: row.optedOut,
     maxLeaveDays: row.maxLeaveDays,
     declarations: byParticipant.get(row.participantId) ?? [],
+    notes: notesByParticipant.get(row.participantId) ?? [],
   }));
 }
 

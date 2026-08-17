@@ -1,7 +1,11 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../client.js";
 import type { Participant } from "../schema/index.js";
-import { availabilityDeclarations, participants } from "../schema/index.js";
+import {
+  availabilityDeclarations,
+  participantNotes,
+  participants,
+} from "../schema/index.js";
 import { upsertTelegramUser } from "./users.js";
 
 /**
@@ -115,6 +119,17 @@ export async function setParticipantOptedOut(
     .update(participants)
     .set({ optedOut })
     .where(eq(participants.id, participantId));
+}
+
+export async function addParticipantNote(
+  db: Db,
+  participantId: string,
+  kind: "DESTINATION_OBJECTION" | "DESTINATION_PREFERENCE" | "BUDGET" | "OTHER",
+  originalText: string,
+): Promise<void> {
+  await db
+    .insert(participantNotes)
+    .values({ participantId, kind, originalText });
 }
 
 export async function listParticipants(

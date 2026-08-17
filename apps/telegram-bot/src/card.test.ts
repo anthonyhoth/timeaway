@@ -21,6 +21,7 @@ const person = (
   optedOut,
   maxLeaveDays,
   declarations,
+  notes: [],
 });
 
 function build(participants: ParticipantPlanningState[]) {
@@ -190,5 +191,36 @@ describe("opting out", () => {
     );
     expect(card).toMatch(/of 1 in/);
     expect(card).not.toMatch(/of 2 in/);
+  });
+});
+
+describe("non-schedule opinions", () => {
+  it("records objections and preferences without voiding the trip", () => {
+    const card = renderTripCard({
+      ...build([
+        person("p1", "Anthony", [
+          { state: "AVAILABLE", start: "2026-11-02", end: "2026-11-20" },
+        ]),
+      ]),
+      participants: [
+        {
+          participantId: "p1",
+          displayName: "Anthony",
+          isOrganiser: true,
+          optedOut: false,
+          maxLeaveDays: null,
+          declarations: [
+            { state: "AVAILABLE", start: "2026-11-02", end: "2026-11-20" },
+          ],
+          notes: [
+            { kind: "DESTINATION_OBJECTION", text: "i just went korea, idw go again" },
+          ],
+        },
+      ],
+    });
+    expect(card).toContain("Worth knowing:");
+    expect(card).toContain("i just went korea, idw go again");
+    // The dates still work — an opinion must never eliminate a window.
+    expect(card).toMatch(/windows work so far|One window works/);
   });
 });

@@ -601,6 +601,29 @@ The founder confirmed the bot should keep showing a shortlist while some members
 
 ---
 
+## Decision (2026-08-17, founder-directed): non-schedule disagreements are recorded, never acted on
+
+The founder asked how objections that aren't about dates should behave — "I just went Korea, don't want to go again", "I want to go Seoul", budget concerns — and set the rule: **they must not void the trip**. Timeaway notes them and flags them up.
+
+This is brief §8's line made concrete: hard constraints eliminate candidates, soft preferences only inform. A disagreement about *where* must never eliminate a window that works on *dates*.
+
+**`participant_notes` records three kinds** — destination objection, destination preference, budget — always with the person's own words, per the auditability rule. They appear on the card under "Worth knowing", quoted verbatim:
+
+> Worth knowing:
+> • Mei — "i just went korea, idw go again"
+> • Wei — "i want to go seoul"
+> • Dan — "budget quite tight for me"
+
+Nothing downstream reads them. Feasibility, ranking and the shortlist are untouched.
+
+**The line against a trip edit is first person.** "Drop Japan" is a decision about the plan and edits it (organiser-gated); "I'd rather not do Japan again" is one person's view and is only recorded. Notes are therefore parsed *before* trip edits, so an opinion is never executed as an instruction. Budget is the exception to the first-person requirement — "too expensive" from anyone is worth recording.
+
+**On budget specifically:** DECISIONS has carried an open risk since the research pass that affordability may matter more to groups than date-finding, and §19 puts budgeting outside the product's scope. Recording budget remarks is the honest middle: the friction becomes visible to the group without the engine pretending it can price a trip.
+
+**Bug worth remembering:** the budget pattern originally ended `\d\b`, so "under 1500" never matched — a word boundary after a digit fails on any multi-digit number. Amounts are now matched without a trailing boundary. Cheap to write, silent to fail.
+
+---
+
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.

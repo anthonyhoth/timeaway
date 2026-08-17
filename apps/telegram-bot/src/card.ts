@@ -290,6 +290,14 @@ export function renderTripCard(input: CardInput): string {
     );
   }
 
+  // Opinions, shown but never acted on: a disagreement about *where* must
+  // not void a trip that works on *dates* (brief §8 — soft preferences
+  // inform, they do not eliminate).
+  const noted = input.participants.flatMap((p) =>
+    (p.notes ?? []).slice(-2).map((n) => `• ${p.displayName} — “${n.text}”`),
+  );
+  if (noted.length > 0) lines.push("", "Worth knowing:", ...noted);
+
   const sittingOut = input.participants.filter((p) => p.optedOut);
   if (sittingOut.length > 0) {
     lines.push(
