@@ -674,14 +674,18 @@ destination, because it is the same kind of fact: a shape the trip has to fit.
     💰 under $500 (Anthony)
     💰 under $500 — tightest of 2 · Dan says $700 is too much
 
-**The tightest limit leads**, since that is the one that binds. A single figure
-carries the name; several carry the count instead, because the list is the
-detail and the ceiling is the decision.
+**Since revised to a range.** The first version picked the tightest figure,
+named whose it was, and reported complaints separately — accurate, and more
+adjudication than anyone asked for. The figures people give are approximate
+("around 1k", "$700 damn ex"), so turning them into a ruling claims a precision
+nobody offered. The card now shows the spread — `$500–700` — and lets the group
+see they disagree without the bot deciding whose number wins. A lone figure
+reads "around $500", because one person's ceiling is not yet the group's.
+Whose figure is whose stays in the notes, where the detail belongs.
 
-**A price called too high is not a ceiling.** "$700 damn ex sia" implies a
-budget *below* $700 and states nothing, so it is shown as what it is —
-"$700 is too much" — rather than recorded as a $700 budget, which would be
-generous in exactly the wrong direction.
+The limit/complaint distinction is still parsed and still worth keeping: it is
+what stops "$700 damn ex" being read as a $700 budget if anything ever does need
+a hard ceiling.
 
 Parsed from the note's stored words at render time rather than kept in its own
 column: one source of truth, and no migration to keep in step with a parser
