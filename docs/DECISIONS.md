@@ -656,6 +656,38 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-18): monospace reversed — it cost the readability it bought
+
+Founder, on the `<pre>` block shipped hours earlier: *"I don't like the date
+windows being displayed in a code block. It is even narrowing and the text has
+been shrunk."*
+
+Correct, and it invalidates the reasoning behind it. The whole exercise was
+started by feedback that the dates were hard to read; iOS renders `<pre>` in a
+smaller face inside a narrower bubble, so the aligned columns were paid for in
+exactly the currency the change was meant to earn. A 26-column budget that
+holds perfectly is worth nothing if the text inside it is harder to see.
+
+Options are plain proportional text again — which also *wraps* rather than
+scrolling sideways, so a long row degrades instead of breaking. The monospace
+helpers are deleted rather than left dormant.
+
+**The month must appear on both ends when a window crosses one.** *"Tue 29 –
+Mon 4 Jan"* reads as December only if you already knew, and a shortlist is
+exactly where you do not. The shared formatter had always handled this; the
+monospace table had reimplemented date formatting to save width and dropped the
+start month in the process — a good illustration of what the width budget was
+costing.
+
+Years are suppressed on the rows, since the header states the window already,
+and kept only in the confirmed state where the dates are the final answer.
+
+One phrasing fix found while rendering: *"All 1 of 4 free"*. "All" governs the
+shape of a window — its length and cost — not how many people can come, so the
+count is stated separately.
+
+---
+
 ## Decision (2026-08-18): "I don't want Japan" removes Japan — reversing an earlier call
 
 Founder-reported: *"Idw to go japan alr"* and *"I dont want Japan anymore"*
@@ -698,7 +730,7 @@ picks nothing — the instruction was simply incorrect.
 
 ---
 
-## Decision (2026-08-18): the card is sized to a phone, in HTML
+## Decision (2026-08-18): the card is sized to a phone, in HTML — monospace since reversed
 
 The trip card is re-sent and re-edited constantly, so it is the one message
 worth fitting to the screen precisely rather than approximately. Measured

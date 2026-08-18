@@ -7,7 +7,6 @@ import {
 } from "@timeaway/trip-engine";
 import { describe, expect, it } from "vitest";
 import { renderTripCard } from "./card.js";
-import { MONO_COLUMNS } from "./markup.js";
 
 const person = (
   id: string,
@@ -96,7 +95,7 @@ describe("renderTripCard", () => {
       ]),
     );
     expect(card).toMatch(/\d windows work so far/);
-    expect(card).toMatch(/1\. \w{3} +\d+ → \w{3} +\d+/);
+    expect(card).toMatch(/1\. \w{3} \d+ – \w{3} \d+/);
     expect(card).toMatch(/\d of \d free|\d of \d\b/);
     expect(card).toContain("https://timeaway.sg/t/abc123");
   });
@@ -458,8 +457,8 @@ describe("readable options", () => {
     );
     // Stats move onto their own line beneath each option rather than being
     // hoisted, since they no longer fit beside the dates on a phone.
-    expect(card).toContain("3d");
-    expect(card).toContain("5d");
+    expect(card).toContain("3 days");
+    expect(card).toContain("5 days");
     expect(card).not.toContain("All 5 days");
   });
 });
@@ -570,11 +569,11 @@ describe("an honest denominator", () => {
 });
 
 /**
- * Phone formatting. Widths are checked rather than eyeballed because a `<pre>`
- * block scrolls sideways instead of wrapping — the failure is invisible in a
- * desktop client and unusable on a phone.
+ * User feedback on the first attempt: a monospace block shrank the text and
+ * narrowed the bubble, costing exactly the readability it was meant to buy. The
+ * options are plain proportional text, which wraps rather than scrolling.
  */
-describe("the card fits a phone", () => {
+describe("the options read as plain text", () => {
   const win = (start: string, end: string, days: number, leave: number) => ({
     window: { start, end, days },
     leaveDays: leave,
@@ -600,53 +599,45 @@ describe("the card fits a phone", () => {
       shortlist: shortlist as never,
       shortlistSize: 5,
     });
-  const rows = (text: string) =>
-    (/<pre>([\s\S]*?)<\/pre>/.exec(text)?.[1] ?? "").split("\n").filter(Boolean);
 
-  it("never exceeds the monospace budget, uniform or mixed", () => {
-    const uniform = card([
-      win("2026-12-09", "2026-12-13", 5, 3),
-      win("2026-12-17", "2026-12-21", 5, 3),
-    ]);
-    const mixed = card([
-      win("2026-12-19", "2026-12-23", 5, 2),
-      win("2026-11-28", "2026-12-04", 7, 4),
-    ]);
-    for (const text of [uniform, mixed]) {
-      for (const row of rows(text)) {
-        expect(row.length, row).toBeLessThanOrEqual(MONO_COLUMNS);
-      }
-    }
+  it("uses no code block at all", () => {
+    const text = card([win("2026-12-09", "2026-12-13", 5, 3)]);
+    expect(text).not.toContain("<pre>");
+    expect(text).not.toContain("<code>");
   });
 
-  it("lines the day numbers up in a column", () => {
-    // A single-digit day must not shunt the weekday across.
+  /**
+   * "Tue 29 – Mon 4 Jan" reads as December only if you already knew. A window
+   * crossing a month boundary has to name both.
+   */
+  it("names both months when a window crosses one", () => {
+    expect(card([win("2026-12-29", "2027-01-04", 7, 3)])).toContain(
+      "Tue 29 Dec – Mon 4 Jan",
+    );
+    expect(card([win("2026-11-28", "2026-12-02", 5, 3)])).toContain(
+      "Sat 28 Nov – Wed 2 Dec",
+    );
+  });
+
+  it("names the month once when the window sits inside one", () => {
+    expect(card([win("2026-12-09", "2026-12-13", 5, 3)])).toContain(
+      "Wed 9 – Sun 13 Dec",
+    );
+  });
+
+  it("does not repeat the year on every row", () => {
+    // The window is already stated in the header.
+    const text = card([win("2026-12-29", "2027-01-04", 7, 3)]);
+    const rows = text.split("\n").filter((line) => /^\d+\. /.test(line));
+    for (const row of rows) expect(row).not.toMatch(/20\d\d/);
+  });
+
+  it("says 'All' only of what every window shares in shape", () => {
+    // "All 1 of 4 free" is nonsense — "All" governs length and cost, not people.
     const text = card([
       win("2026-12-09", "2026-12-13", 5, 3),
-      win("2026-12-17", "2026-12-21", 5, 3),
+      win("2026-12-29", "2027-01-04", 7, 4),
     ]);
-    const [first, second] = rows(text);
-    expect(first!.indexOf("→")).toBe(second!.indexOf("→"));
-  });
-
-  it("wraps to two lines rather than scrolling sideways", () => {
-    // Mixed stats cannot fit beside the dates, so they take their own line.
-    const mixed = rows(
-      card([
-        win("2026-12-19", "2026-12-23", 5, 2),
-        win("2026-11-28", "2026-12-04", 7, 4),
-      ]),
-    );
-    expect(mixed.length).toBe(4);
-  });
-
-  it("produces HTML Telegram will accept", () => {
-    const text = card([win("2026-12-09", "2026-12-13", 5, 3)]);
-    // Balanced tags, and no stray angle bracket from user content.
-    for (const tag of ["b", "pre"]) {
-      const open = text.match(new RegExp(`<${tag}[ >]`, "g")) ?? [];
-      const close = text.match(new RegExp(`</${tag}>`, "g")) ?? [];
-      expect(open.length, tag).toBe(close.length);
-    }
+    expect(text).not.toMatch(/All \d+ of \d+/);
   });
 });

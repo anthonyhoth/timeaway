@@ -5,7 +5,7 @@ import type {
   ParticipantDiagnostic,
   RankedWindows,
 } from "@timeaway/trip-engine";
-import { bold, collapsible, esc, mono, MONO_COLUMNS } from "./markup.js";
+import { bold, collapsible, esc } from "./markup.js";
 import {
   formatDateRange,
   formatTripDates,
@@ -297,57 +297,27 @@ function diagnosticLines(input: CardInput): string[] {
 /**
  * The options as a fixed-width block, so the eye can run down a column.
  *
- * Held to MONO_COLUMNS because a `<pre>` block scrolls sideways rather than
- * wrapping, and an option list you have to drag is worse than a plain one. Two
- * things buy the width back: the month is hoisted out when every option shares
- * it, and day numbers are right-aligned so "9" and "17" line up instead of
- * ragging.
+ * Kept to one line each where the numbers are shared, since a shortlist spread
+ * across the horizon usually differs only in its dates.
  */
-function optionTable(
+function optionRows(
   options: readonly EvaluatedWindow[],
   travellerCount: number,
-): string {
-  const months = new Set(
-    options.flatMap((w) => [w.window.start.slice(0, 7), w.window.end.slice(0, 7)]),
-  );
-  const oneMonth = months.size === 1;
-
-  const dates = options.map((w, index) => {
-    const month = oneMonth ? "" : ` ${monthOf(w.window.end)}`;
-    return `${index + 1}. ${dayCell(w.window.start)} → ${dayCell(w.window.end)}${month}`;
+): string[] {
+  return options.flatMap((w, index) => {
+    // Always through formatTripDates, which names the month on both ends when a
+    // window crosses one — "Tue 29 Dec – Mon 4 Jan" rather than a bare "Tue 29",
+    // which reads as December only if you already knew.
+    const dates = formatTripDates(w.window.start, w.window.end, {
+      showYear: false,
+    });
+    const stats = varyingFacts(w, options, travellerCount).replace(/^ · /, "");
+    const row = `${index + 1}. ${dates}`;
+    // Proportional text wraps rather than scrolling, so a long row is survivable
+    // — but a wrapped row loses its alignment with the number, so the stats get
+    // their own indented line instead.
+    return stats ? [row, `    ${stats}`] : [row];
   });
-  const stats = options.map((w) =>
-    varyingFacts(w, options, travellerCount).replace(/^ · /, ""),
-  );
-
-  // One line each where it fits. A `<pre>` block scrolls sideways rather than
-  // wrapping, so a row over budget would make the whole list draggable — worse
-  // than spending a second line on the options that need one.
-  const oneLine = dates.map((d, i) => (stats[i] ? `${d}  ${stats[i]}` : d));
-  if (Math.max(...oneLine.map((row) => row.length)) <= MONO_COLUMNS) {
-    return mono(oneLine);
-  }
-
-  // Wrapped, consistently: mixing one- and two-line rows in the same block is
-  // harder to scan than either on its own.
-  return mono(
-    dates.flatMap((d, i) => (stats[i] ? [d, `    ${stats[i]}`] : [d])),
-  );
-}
-
-/** "Wed  9" — weekday fixed, day right-aligned, so the numbers form a column. */
-function dayCell(date: string): string {
-  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
-    new Date(`${date}T00:00:00Z`).getUTCDay()
-  ]!;
-  return `${weekday} ${String(Number(date.slice(8, 10))).padStart(2, " ")}`;
-}
-
-function monthOf(date: string): string {
-  return [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-  ][Number(date.slice(5, 7)) - 1]!;
 }
 
 /**
@@ -368,13 +338,18 @@ function sharedFacts(
   const leave = same((w) => w.leaveDays);
   const available = same((w) => w.counts.available);
 
-  const facts: string[] = [];
-  if (days !== null) facts.push(`${days} days`);
+  // "All" governs the shape of each window — its length and cost. It does not
+  // govern how many people can come, and "All 1 of 4 free" is nonsense.
+  const shape: string[] = [];
+  if (days !== null) shape.push(`${days} days`);
   if (leave !== null) {
-    facts.push(`${leave} leave ${leave === 1 ? "day" : "days"}`);
+    shape.push(`${leave} leave ${leave === 1 ? "day" : "days"}`);
   }
-  if (available !== null) facts.push(`${available} of ${travellerCount} free`);
-  return facts.length > 0 ? `All ${facts.join(" · ")}` : null;
+
+  const parts: string[] = [];
+  if (shape.length > 0) parts.push(`All ${shape.join(" · ")}`);
+  if (available !== null) parts.push(`${available} of ${travellerCount} free`);
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /** Only what this option does *not* share with the rest. */
@@ -387,12 +362,12 @@ function varyingFacts(
     options.some((w) => pick(w) !== pick(options[0]!));
 
   const facts: string[] = [];
-  if (differs((w) => w.window.days)) facts.push(`${window.window.days}d`);
+  if (differs((w) => w.window.days)) facts.push(`${window.window.days} days`);
   if (differs((w) => w.leaveDays)) {
     facts.push(`${window.leaveDays} leave`);
   }
   if (differs((w) => w.counts.available)) {
-    facts.push(`${window.counts.available}/${travellerCount}`);
+    facts.push(`${window.counts.available} of ${travellerCount}`);
   }
   if (window.counts.rosterPending > 0) {
     facts.push(`${window.counts.rosterPending} pending`);
@@ -520,7 +495,7 @@ export function renderTripCard(input: CardInput): string {
       const only = options[0]!;
       lines.push(
         "One window works for everyone",
-        `${formatTripDates(only.window.start, only.window.end)} · ${only.window.days} days`,
+        `${formatTripDates(only.window.start, only.window.end, { showYear: false })} · ${only.window.days} days`,
         "",
         ...participantLines(only, input.participants, { total: groupTotal(input) }),
       );
@@ -537,7 +512,7 @@ export function renderTripCard(input: CardInput): string {
       // actually differs, so the dates are all that is left on the row.
       const shared = sharedFacts(options, groupTotal(input));
       if (shared) lines.push(shared, "");
-      lines.push(optionTable(options, groupTotal(input)));
+      lines.push(...optionRows(options, groupTotal(input)));
       const attention = attentionLines(options[0]!, input.participants);
       const silent = silentCount(input);
       // Named where we can, counted where we cannot. Leaving them out entirely
@@ -568,7 +543,7 @@ export function renderTripCard(input: CardInput): string {
     lines.push(
       "No window works for everyone yet.",
       "",
-      `Closest: ${formatTripDates(best.window.start, best.window.end)} · ${best.window.days} days`,
+      `Closest: ${formatTripDates(best.window.start, best.window.end, { showYear: false })} · ${best.window.days} days`,
       ...participantLines(best, input.participants, { total: groupTotal(input) }),
       "",
       "Shift a date or go without someone — your call.",

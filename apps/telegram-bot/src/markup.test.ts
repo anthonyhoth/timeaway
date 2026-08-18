@@ -1,21 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { collapsible, esc, MONO_COLUMNS, mono } from "./markup.js";
+import { collapsible, esc } from "./markup.js";
 
 /**
- * The trip card is re-sent and re-edited constantly, so it is the one message
- * worth fitting to the screen exactly. Measured on an iPhone 14 Pro (393pt) at
- * Telegram's default text size: ~34 proportional characters per line, ~28
- * monospace.
+ * The card is re-sent constantly, so it is worth fitting to a phone
+ * deliberately: an iPhone 14 Pro at default text size holds roughly 34
+ * proportional characters per line.
  *
- * Monospace is the binding constraint, because a `<pre>` block does **not
- * wrap** — it scrolls sideways. One character too wide and the whole option
- * list has to be dragged, which is worse than having no columns at all.
+ * Monospace columns were tried and rejected — iOS renders `<pre>` in a smaller
+ * face inside a narrower bubble, so the alignment cost exactly the readability
+ * the formatting was meant to buy.
  */
 describe("markup sized for a phone", () => {
-  it("holds the monospace budget under what the screen fits", () => {
-    expect(MONO_COLUMNS).toBeLessThanOrEqual(28);
-  });
-
   /**
    * Names and notes are user-supplied, and Telegram rejects malformed HTML
    * outright — so an unescaped angle bracket does not garble the card, it makes
@@ -24,10 +19,6 @@ describe("markup sized for a phone", () => {
   it("escapes what users typed", () => {
     expect(esc("Mei & <friends>")).toBe("Mei &amp; &lt;friends&gt;");
     expect(esc("a > b & c < d")).toBe("a &gt; b &amp; c &lt; d");
-  });
-
-  it("escapes inside a monospace block too", () => {
-    expect(mono(["<b>"])).toBe("<pre>&lt;b&gt;</pre>");
   });
 
   it("leaves ordinary punctuation alone", () => {

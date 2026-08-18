@@ -67,6 +67,13 @@ export function formatTripDates(
 
   if (start === end) return `${weekday(start)} ${s.day} ${s.month}${tail}`;
   if (s.year !== e.year) {
+    // Years are dropped only when the caller says so — a shortlist already
+    // states the window above it, and repeating 2026 on every row is the noise
+    // that pushed these lines over the width a phone can show.
+    const years = options.showYear === false ? "" : true;
+    if (!years) {
+      return `${weekday(start)} ${s.day} ${s.month} – ${weekday(end)} ${e.day} ${e.month}`;
+    }
     return `${weekday(start)} ${s.day} ${s.month} ${s.year} – ${weekday(end)} ${e.day} ${e.month} ${e.year}`;
   }
   if (s.month !== e.month) {
