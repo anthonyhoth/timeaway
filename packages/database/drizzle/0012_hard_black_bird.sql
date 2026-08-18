@@ -1,0 +1,1 @@
+ALTER TABLE "trips" ADD COLUMN "telegram_member_count" integer;

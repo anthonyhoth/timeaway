@@ -165,6 +165,23 @@ export async function setTripShape(
   await db.update(trips).set(patch).where(eq(trips.id, tripId));
 }
 
+/**
+ * Remember how big the group is.
+ *
+ * Telegram gives a count and nothing else — no names, no ids — so this is the
+ * only way the card can tell "everyone agreed" from "everyone who spoke".
+ */
+export async function setMemberCount(
+  db: Db,
+  tripId: string,
+  memberCount: number,
+): Promise<void> {
+  await db
+    .update(trips)
+    .set({ telegramMemberCount: memberCount })
+    .where(eq(trips.id, tripId));
+}
+
 /** Retire a trip so the group can start fresh, keeping the history. */
 export async function archiveTrip(db: Db, tripId: string): Promise<void> {
   await db

@@ -656,6 +656,59 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-18): count the whole chat, not just the people who spoke
+
+Founder asked whether the bot knows every group member once it is added. It
+does not, and cannot: Telegram gives a bot a member **count** and never a
+member **list**. Verified against the live group — `getChatMemberCount` returns
+a bare number, `getChatAdministrators` returns only admins, and
+`getChatMembers` does not exist as a method.
+
+So the bot learns a person exists only when they speak, or when they join after
+it is already there. Participants were created lazily on first message, which
+made the card's denominator *people who have spoken* rather than *people in the
+group*:
+
+    3 of 3 can make it
+
+— in a chat of six where three had never been asked. A partial answer reading
+as unanimity is the worst possible version of this, because it is the number a
+group would book flights against. It is also precisely the failure the research
+pass flagged: only two or three of six respond, and of ten "definites and
+maybes", about two turn up.
+
+The count is now fetched and stored, and every denominator goes through it:
+
+    3 of 6 free
+    3 people haven't said anything yet
+
+**Founder confirmed we are the only bot in these groups**, so one subtraction is
+the whole correction — Telegram cannot tell us about other bots, and a second
+subtraction would silently undercount the humans.
+
+Three details that matter more than they look:
+
+  * **Opt-outs come off the denominator**, not the numerator. Someone sitting
+    the trip out is not a person we are waiting on.
+  * **It never shrinks below the people we have heard from.** Someone may answer
+    and then leave the chat; dropping their answer would be a stranger lie than
+    the one being fixed.
+  * **The nudge reaches them too.** Its button used to hide itself when nobody
+    *known* was quiet — which is exactly the group where nobody has spoken at
+    all. Unnamed people are now addressed as a room, since they cannot be named.
+
+Cached for ten minutes and persisted on the trip: a card refreshes on every
+parsed message, group membership barely moves, and a restart should not go back
+to counting only the vocal.
+
+**What this still cannot do:** name them. Only counting is possible until they
+speak. Naming would need either the organiser listing people manually — which
+is what the `invite_name` column was always for — or subscribing to
+`chat_member` updates, which would catch joins and leaves going forward but
+never backfill who is already there.
+
+---
+
 ## Decision (2026-08-18): the options were hard to read, and the card was teaching
 
 User feedback: the suggested dates were hard to read. Founder feedback: the

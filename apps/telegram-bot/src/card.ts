@@ -37,6 +37,15 @@ export interface CardInput {
    * they should be able to see and correct it.
    */
   horizonDerived?: boolean;
+  /**
+   * People in the group chat, the bot excluded.
+   *
+   * Telegram gives a bot a member *count* and never a member *list*, so anyone
+   * who has not spoken is invisible to us. Without this the card counted only
+   * the people it had heard from, and "3 of 3 can make it" read as unanimity
+   * in a group of six where three had never been asked.
+   */
+  groupSize?: number | null;
   /** Set once the organiser has confirmed; renders the settled state. */
   selected?: { start: string; end: string } | null;
 }
@@ -46,6 +55,31 @@ function travellers(
   participants: readonly ParticipantPlanningState[],
 ): ParticipantPlanningState[] {
   return participants.filter((p) => !p.optedOut);
+}
+
+/**
+ * How many people the trip is actually for.
+ *
+ * The people we have heard from are a lower bound, not the answer: silence is
+ * invisible to a bot, and counting only the vocal turns half a group into
+ * unanimity. Where the chat size is known it wins, minus anyone who has said
+ * they are sitting out.
+ *
+ * Never smaller than the people we know about — someone may have left the chat
+ * after answering, and dropping their answer from the denominator would be a
+ * stranger lie than the one being fixed.
+ */
+function groupTotal(input: CardInput): number {
+  const known = travellers(input.participants).length;
+  if (!input.groupSize) return known;
+  const optedOut = input.participants.filter((p) => p.optedOut).length;
+  return Math.max(known, input.groupSize - optedOut);
+}
+
+/** People in the chat who have never said anything to us at all. */
+function silentCount(input: CardInput): number {
+  if (!input.groupSize) return 0;
+  return Math.max(0, input.groupSize - input.participants.length);
 }
 
 function nameOf(
@@ -80,14 +114,15 @@ function attentionLines(
 function participantLines(
   window: EvaluatedWindow,
   participants: readonly ParticipantPlanningState[],
-  options: { includeCounts?: boolean } = {},
+  options: { includeCounts?: boolean; total?: number } = {},
 ): string[] {
   const includeCounts = options.includeCounts ?? true;
+  const total = options.total ?? travellers(participants).length;
   const lines: string[] = [];
 
   if (includeCounts && window.counts.available > 0) {
     lines.push(
-      `${window.counts.available} of ${travellers(participants).length} can make it`,
+      `${window.counts.available} of ${total} can make it`,
     );
   }
 
@@ -388,8 +423,16 @@ export function renderTripCard(input: CardInput): string {
     const waiting = travellers(input.participants)
       .filter((p) => p.declarations.length === 0)
       .map((p) => p.displayName);
-    if (waiting.length > 0) {
-      lines.push("", `Waiting on ${joinNames(waiting)}.`);
+    // Telegram never tells a bot who is in a chat, only how many, so the people
+    // who have never spoken are counted rather than named — and folded into the
+    // same list, so it reads as one sentence.
+    const silent = silentCount(input);
+    const stillWaiting = [
+      ...waiting,
+      ...(silent > 0 ? [`${silent} other${silent === 1 ? "" : "s"}`] : []),
+    ];
+    if (stillWaiting.length > 0) {
+      lines.push("", `Waiting on ${joinNames(stillWaiting)}.`);
     }
 
     // Acknowledge anything already heard that isn't a date, so the card never
@@ -412,7 +455,7 @@ export function renderTripCard(input: CardInput): string {
         "One window works for everyone",
         `${formatTripDates(only.window.start, only.window.end)} · ${only.window.days} days`,
         "",
-        ...participantLines(only, input.participants),
+        ...participantLines(only, input.participants, { total: groupTotal(input) }),
       );
     } else {
       lines.push(
@@ -425,17 +468,26 @@ export function renderTripCard(input: CardInput): string {
       // shortlist where each line reads "5d · 2/4 · 3 leave" makes the reader
       // scan three times to learn nothing — the dates are the only thing that
       // actually differs, so the dates are all that is left on the row.
-      const shared = sharedFacts(options, travellers(input.participants).length);
+      const shared = sharedFacts(options, groupTotal(input));
       if (shared) lines.push(shared, "");
 
       options.forEach((w, index) => {
         lines.push(
           `${index + 1}. ${formatTripDates(w.window.start, w.window.end)}` +
-            varyingFacts(w, options, travellers(input.participants).length),
+            varyingFacts(w, options, groupTotal(input)),
         );
       });
       const attention = attentionLines(options[0]!, input.participants);
-      if (attention.length > 0) lines.push("", ...attention);
+      const silent = silentCount(input);
+      // Named where we can, counted where we cannot. Leaving them out entirely
+      // is what made a partial answer look like a settled one.
+      const unheard =
+        silent > 0
+          ? [`${silent} ${silent === 1 ? "person hasn't" : "people haven't"} said anything yet`]
+          : [];
+      if (attention.length > 0 || unheard.length > 0) {
+        lines.push("", ...attention, ...unheard);
+      }
 
       const notes = notedLines(input.participants);
       if (notes.length > 0) lines.push("", "Noted so far:", ...notes);
@@ -454,7 +506,7 @@ export function renderTripCard(input: CardInput): string {
       "No window works for everyone yet.",
       "",
       `Closest: ${formatTripDates(best.window.start, best.window.end)} · ${best.window.days} days`,
-      ...participantLines(best, input.participants),
+      ...participantLines(best, input.participants, { total: groupTotal(input) }),
       "",
       "Shift a date or go without someone — your call.",
     );

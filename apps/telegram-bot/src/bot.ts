@@ -47,6 +47,7 @@ import {
   setAmbientPaused,
   setCardMessageId,
   setDestinationCandidates,
+  setMemberCount,
   setLeaveCap,
   deleteNote,
   listReversibleFacts,
@@ -1871,6 +1872,44 @@ export function createBot(token: string, deps: BotDeps): Bot {
   }
 
   /**
+   * How many people are in the chat, refreshed sparingly.
+   *
+   * Telegram exposes a count and nothing else — no list, no ids — so this is
+   * the only way to know somebody has not spoken. Cached because a card
+   * refreshes on every parsed message and group membership barely moves;
+   * persisted on the trip so a restart does not go back to counting only the
+   * people who happen to have talked.
+   */
+  const memberCounts = new Map<string, { value: number; at: number }>();
+  const MEMBER_COUNT_TTL_MS = 10 * 60 * 1000;
+
+  async function humansInChat(ctx: Context, trip: Trip): Promise<number | null> {
+    const chatId = trip.telegramChatId;
+    if (!chatId) return null;
+
+    const cached = memberCounts.get(chatId);
+    if (cached && Date.now() - cached.at < MEMBER_COUNT_TTL_MS) return cached.value;
+
+    try {
+      const total = await ctx.api.getChatMemberCount(Number(chatId));
+      // The founder confirmed we are the only bot in these groups, so one
+      // subtraction is the whole correction. Telegram cannot tell us about
+      // other bots, so a second one would silently undercount the humans.
+      const humans = Math.max(0, total - 1);
+      memberCounts.set(chatId, { value: humans, at: Date.now() });
+      if (humans !== trip.telegramMemberCount) {
+        await setMemberCount(deps.db, trip.id, humans);
+      }
+      return humans;
+    } catch (error) {
+      // A failure here must not cost the group its card, so fall back to what
+      // was last stored rather than surfacing an error.
+      console.error("member count failed", error);
+      return trip.telegramMemberCount ?? null;
+    }
+  }
+
+  /**
    * The window this trip is planned across: the one the group set, or — when
    * they never set one — the span of what they have actually said.
    *
@@ -1984,6 +2023,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     // variations on the same week (see selectDiverseWindows).
     const shortlistSize = trip.shortlistSize ?? 5;
     const shortlist = selectDiverseWindows(ranked.feasible, shortlistSize);
+    const groupSize = await humansInChat(ctx, trip);
 
     const text = renderTripCard({
       destinations: trip.destinationCandidates ?? [],
@@ -2000,6 +2040,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       horizonStart: horizon?.start ?? null,
       horizonEnd: horizon?.end ?? null,
       horizonDerived: !trip.horizonStart && horizon !== null,
+      groupSize,
     });
 
     let keyboard: InlineKeyboard | undefined;
@@ -2029,7 +2070,12 @@ export function createBot(token: string, deps: BotDeps): Bot {
         const quiet = shortlist[0]!.participants.filter(
           (p) => p.status === "UNANSWERED" || p.dayCounts.unknown > 0,
         );
-        if (quiet.length > 0) keyboard.text("Ask the quiet ones", "trip:nudge");
+        // Silent-but-unnamed people count too, or the button hides itself in
+        // exactly the group that needs it most: one where nobody has spoken.
+        const unheard = groupSize ? Math.max(0, groupSize - participants.length) : 0;
+        if (quiet.length > 0 || unheard > 0) {
+          keyboard.text("Ask the quiet ones", "trip:nudge");
+        }
       } else {
         // Final round: one button per remaining option.
         shortlist.forEach((w) => {
@@ -2245,7 +2291,13 @@ export function createBot(token: string, deps: BotDeps): Bot {
         !p.optedOut &&
         p.declarations.some((d) => d.state === "UNKNOWN"),
     );
-    if (quiet.length === 0 && pending.length === 0) {
+    // People who have never said a word are invisible to us by name — Telegram
+    // gives a bot a count and no list — so they are addressed as a room rather
+    // than left out of the ask entirely.
+    const humans = await humansInChat(ctx, trip);
+    const unheard = humans ? Math.max(0, humans - people.length) : 0;
+
+    if (quiet.length === 0 && pending.length === 0 && unheard === 0) {
       await ctx.answerCallbackQuery("Everyone's already answered.");
       return;
     }
@@ -2260,6 +2312,12 @@ export function createBot(token: string, deps: BotDeps): Bot {
     if (pending.length > 0) {
       parts.push(
         `${pending.map((p) => p.displayName).join(", ")} — any news on your roster?`,
+      );
+    }
+    if (unheard > 0) {
+      parts.push(
+        `And ${unheard === 1 ? "whoever hasn't" : `the ${unheard} of you who haven't`} said anything yet — ` +
+          "even \u201ccan't do December\u201d helps.",
       );
     }
     // No "count me out" nag: opting out is already a valid answer, and

@@ -55,6 +55,11 @@ export const trips = pgTable(
   // Set when status reaches DATE_SELECTED.
   selectedStart: date("selected_start"),
   selectedEnd: date("selected_end"),
+  // How many people are in the group chat, from getChatMemberCount — the only
+  // membership fact Telegram gives a bot. It never exposes *who*, so this is
+  // the sole way to know that someone has not spoken yet. Includes the bot
+  // itself; the reader subtracts it.
+  telegramMemberCount: integer("telegram_member_count"),
   // Group chat this trip's ambient capture listens to (null for DM-created
   // trips). Telegram chat ids exceed 32 bits — stored as text.
   telegramChatId: text("telegram_chat_id"),

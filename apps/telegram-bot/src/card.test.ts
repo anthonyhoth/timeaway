@@ -500,3 +500,65 @@ describe("the invitation card is status, not a tutorial", () => {
     expect(card.split("\n")[1]).toMatch(/days/);
   });
 });
+
+/**
+ * Telegram never gives a bot the member list — only a count — so anyone who has
+ * not spoken is invisible to us. Counting only the people we had heard from
+ * turned half a group into unanimity: "3 of 3 can make it" in a chat of six
+ * where three had never been asked.
+ */
+describe("an honest denominator", () => {
+  const spoke = [
+    person("p1", "Anthony", [
+      { state: "AVAILABLE" as const, start: "2026-11-02", end: "2026-11-20" },
+    ]),
+    person("p2", "Dan", [
+      { state: "AVAILABLE" as const, start: "2026-11-02", end: "2026-11-20" },
+    ]),
+  ];
+
+  it("counts the whole chat, not just the vocal part", () => {
+    const card = renderTripCard({ ...build(spoke), groupSize: 6 });
+    expect(card).toContain("of 6");
+    expect(card).not.toContain("of 2");
+  });
+
+  it("says how many have never answered", () => {
+    expect(renderTripCard({ ...build(spoke), groupSize: 6 })).toContain(
+      "4 people haven't said anything yet",
+    );
+  });
+
+  it("takes opt-outs off the denominator", () => {
+    // Someone sitting the trip out is not a person we are waiting on.
+    const withOptOut = [
+      ...spoke,
+      person("p3", "Farah", [], null, true),
+    ];
+    const card = renderTripCard({ ...build(withOptOut), groupSize: 6 });
+    expect(card).toContain("of 5");
+  });
+
+  it("never shrinks below the people we have actually heard from", () => {
+    // Someone may answer and then leave the chat; dropping their answer from
+    // the denominator would be a stranger lie than the one being fixed.
+    const card = renderTripCard({ ...build(spoke), groupSize: 1 });
+    expect(card).toContain("of 2");
+  });
+
+  it("falls back to the old behaviour when the count is unknown", () => {
+    const card = renderTripCard({ ...build(spoke), groupSize: null });
+    expect(card).toContain("of 2");
+    expect(card).not.toContain("haven't said anything yet");
+  });
+
+  it("folds the unnamed into the waiting list as one sentence", () => {
+    const card = renderTripCard({
+      ...build([person("p1", "Anthony"), person("p2", "Farah")]),
+      horizonStart: null,
+      horizonEnd: null,
+      groupSize: 6,
+    });
+    expect(card).toContain("Waiting on Anthony, Farah and 4 others.");
+  });
+});
