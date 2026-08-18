@@ -656,6 +656,45 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-18): an exclusion is a fact about a place, not a sentence
+
+Founder: *"let's go japan, idw philippines" should add Japan and flag that the
+user does not want the Philippines, warning if anyone else shows interest.*
+
+Objections were being kept only as prose. `parseParticipantNote` recorded the
+words verbatim, which is right for the card and useless for the thing that
+matters: **verbatim text cannot be matched against a destination somebody
+suggests three days later.** The rejection was visible and inert.
+
+`parseDestinationObjection` now extracts the place, and does it *independently
+of the current list* — which is the whole point. The existing edit path can only
+*remove* a destination the trip already has, so "idw philippines" said before
+anyone proposes the Philippines produced nothing at all, and that is precisely
+the case worth remembering.
+
+Getting the name out needed the rejection vocabulary stripped first: "idw
+philippines" otherwise yields a place called *Idw Philippines*, which fails
+vetting and takes the objection down with it. "Drop" happened to be a filler
+word already; "idw" was not.
+
+Two surfaces:
+
+  * **The card names contested places** — "Philippines — Farah would rather
+    not" — above the trip link rather than folded into the notes, because a
+    rejected destination still on the list is a decision waiting to happen
+    rather than a passing remark.
+  * **The clash is called at the moment it happens.** Someone proposing a place
+    another person ruled out is told immediately, when the group can actually
+    settle it, rather than leaving it for whoever reads the card next.
+
+**The suggestion still stands.** An objection is a thing to know, not a veto,
+and the founder was explicit early on that disagreement about *where* must not
+void a trip that works on *when*. The warning ends "still on the list — up to
+you all" for that reason. Someone's own earlier objection is not treated as a
+clash with themselves.
+
+---
+
 ## Decision (2026-08-18): a message can carry more than one destination decision
 
 Founder-reported: *"let's go japan, idw philippines"* handled neither place.
