@@ -385,6 +385,31 @@ function foldable(title: string, lines: readonly string[]): string {
   return collapsible(`${title} (${lines.length})`, lines);
 }
 
+/**
+ * Places somebody has ruled out that are still on the table.
+ *
+ * An objection never removes a destination on its own — that stays the group's
+ * call — but leaving it as prose in the notes meant a candidate could sit there
+ * with nobody noticing anyone had rejected it. Named here so the disagreement is
+ * visible at the point it matters, beside the destination itself.
+ */
+function contestedDestinations(input: CardInput): string[] {
+  const lines: string[] = [];
+  for (const place of input.destinations) {
+    const objectors = input.participants
+      .filter((p) =>
+        (p.notes ?? []).some(
+          (n) => n.destination && n.destination.toLowerCase() === place.toLowerCase(),
+        ),
+      )
+      .map((p) => esc(p.displayName));
+    if (objectors.length > 0) {
+      lines.push(`${esc(place)} — ${joinNames(objectors)} would rather not`);
+    }
+  }
+  return lines;
+}
+
 /** Non-date input already captured, one bullet per person. */
 function notedLines(
   participants: readonly ParticipantPlanningState[],
@@ -557,6 +582,12 @@ export function renderTripCard(input: CardInput): string {
     (p.notes ?? []).slice(-2).map((n) => `• ${esc(p.displayName)} — “${esc(n.text)}”`),
   );
   if (noted.length > 0) lines.push("", foldable("Worth knowing", noted));
+
+  // Above the trip link rather than inside "Worth knowing": a destination
+  // somebody has rejected while it is still on the list is a decision waiting
+  // to happen, not a passing remark.
+  const contested = contestedDestinations(input);
+  if (contested.length > 0) lines.push("", `⚠️ ${contested.join("\n")}`);
 
   const sittingOut = input.participants.filter((p) => p.optedOut);
   if (sittingOut.length > 0) {

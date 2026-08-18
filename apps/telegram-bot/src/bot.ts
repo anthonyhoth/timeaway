@@ -11,6 +11,7 @@ import {
   looksLikeContinuation,
   namesOpaquePeriod,
   opaqueReferentLabel,
+  parseDestinationObjection,
   parseOptionReference,
   parseParticipationChange,
   parseUnderspecifiedSpan,
@@ -1237,7 +1238,17 @@ export function createBot(token: string, deps: BotDeps): Bot {
               .join(" "),
           },
         );
-        await addParticipantNote(deps.db, participant.id, note.kind, note.text);
+        // The place being rejected is stored alongside the words, because the
+        // words cannot be matched against a destination somebody suggests
+        // later — which is the only reason to keep the objection at all.
+        const objected = parseDestinationObjection(text, today());
+        await addParticipantNote(
+          deps.db,
+          participant.id,
+          note.kind,
+          note.text,
+          objected[0] ?? null,
+        );
         noted = true;
       }
     }
@@ -1300,6 +1311,13 @@ export function createBot(token: string, deps: BotDeps): Bot {
           }
           const afterEdit = await getTripById(deps.db, trip.id);
           if (afterEdit) await refreshTripCard(ctx, afterEdit);
+          await warnIfContested(
+            ctx,
+            trip,
+            (edit.destinations ?? [])
+              .filter((d) => d.op !== "REMOVE")
+              .flatMap((d) => d.destinations),
+          );
         } else {
           // A destructive change from someone who isn't the organiser: hold
           // it for approval rather than silently ignoring them.
@@ -2162,6 +2180,60 @@ export function createBot(token: string, deps: BotDeps): Bot {
         applyDestinationEdits(current, edit.destinations),
       );
     }
+    await applyTripShape(trip, edit);
+  }
+
+  /**
+   * Somebody has just proposed a place another person ruled out.
+   *
+   * Said once, at the moment it happens, rather than left for whoever reads the
+   * card later — this is the point where the group can actually settle it. The
+   * suggestion still stands: an objection is a thing to know, not a veto, and
+   * the founder was explicit that disagreement about *where* must not void a
+   * trip that works on *when*.
+   */
+  async function warnIfContested(
+    ctx: Context,
+    trip: Trip,
+    added: readonly string[],
+  ): Promise<void> {
+    if (added.length === 0) return;
+    const people = await loadTripPlanningState(deps.db, trip.id);
+
+    const clashes: string[] = [];
+    for (const place of added) {
+      const objectors = people
+        .filter((p) =>
+          (p.notes ?? []).some(
+            (n) =>
+              n.destination &&
+              n.destination.toLowerCase() === place.toLowerCase() &&
+              // Their own earlier objection is not a clash with themselves.
+              String(p.participantId) !== String(ctx.from?.id),
+          ),
+        )
+        .map((p) => p.displayName);
+      if (objectors.length > 0) {
+        clashes.push(
+          `${place} — ${objectors.join(" and ")} said they'd rather not.`,
+        );
+      }
+    }
+    if (clashes.length === 0) return;
+
+    void recordEvent(deps.db, {
+      event: "destination_contested",
+      tripId: trip.id,
+      chatId: String(ctx.chat!.id),
+      properties: { places: clashes.length },
+    });
+    await ctx.reply(`⚠️ ${clashes.join("\n")}\nStill on the list — up to you all.`);
+  }
+
+  async function applyTripShape(
+    trip: Trip,
+    edit: NonNullable<ReturnType<typeof parseTripEdit>>,
+  ): Promise<void> {
     if (edit.horizon || edit.duration) {
       // "Minimum 5 days" states a floor and nothing about the ceiling, so the
       // other end is kept: a 3–7 day trip becomes 5–7, not exactly 5.

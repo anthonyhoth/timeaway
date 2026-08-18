@@ -25,6 +25,10 @@ export const participantNotes = pgTable("participant_notes", {
   kind: noteKind("kind").notNull(),
   /** Their own words — the auditability rule applies here too. */
   originalText: text("original_text").notNull(),
+  // The place being objected to, when the objection names one. Kept structured
+  // as well as verbatim, because the verbatim text cannot be matched against a
+  // destination somebody suggests later — which is the whole point of noting it.
+  destination: text("destination"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

@@ -92,6 +92,13 @@
       "when": 1787030610773,
       "tag": "0012_hard_black_bird",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787040422513,
+      "tag": "0013_aspiring_lizard",
+      "breakpoints": true
     }
   ]
 }

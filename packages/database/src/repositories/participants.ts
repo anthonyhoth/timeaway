@@ -313,10 +313,16 @@ export async function addParticipantNote(
   participantId: string,
   kind: "DESTINATION_OBJECTION" | "DESTINATION_PREFERENCE" | "BUDGET" | "OTHER",
   originalText: string,
+  /**
+   * The place being objected to, when the objection names one. Stored
+   * structured as well as verbatim: the words cannot be matched against a
+   * destination somebody suggests later, which is the only reason to keep it.
+   */
+  destination?: string | null,
 ): Promise<void> {
   await db
     .insert(participantNotes)
-    .values({ participantId, kind, originalText });
+    .values({ participantId, kind, originalText, destination: destination ?? null });
 }
 
 /**

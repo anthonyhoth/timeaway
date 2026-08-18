@@ -4,6 +4,7 @@ import {
   applyDestinationEdits,
   parseDestinationEdit,
   parseDestinationEdits,
+  parseDestinationObjection,
 } from "./destination.js";
 
 const TODAY = "2026-08-17";
@@ -217,5 +218,40 @@ describe("several destination decisions in one message", () => {
     // shape differs, the outcome must not.
     expect(applyDestinationEdits([], edits("lets add korea and taiwan too")))
       .toEqual(["Korea", "Taiwan"]);
+  });
+});
+
+/**
+ * An objection has to be stored against a *place*, not just as prose.
+ *
+ * "Idw philippines" said before anyone has suggested the Philippines is the
+ * most useful thing in the message — it is what should surface the moment
+ * somebody else proposes it. `parseDestinationEdits` cannot carry that, because
+ * there is nothing to remove from a list the place is not on.
+ */
+describe("what a person has ruled out", () => {
+  const objected = (text: string) =>
+    parseDestinationObjection(text, "2026-08-17");
+
+  it("names the place even when the trip is not considering it", () => {
+    expect(objected("idw philippines")).toEqual(["Philippines"]);
+    expect(objected("i dont want japan anymore")).toEqual(["Japan"]);
+    expect(objected("im sick of korea")).toEqual(["Korea"]);
+  });
+
+  it("objects only to the place actually rejected", () => {
+    // The same message proposes Japan and rules out the Philippines.
+    expect(objected("let's go japan, idw philippines")).toEqual(["Philippines"]);
+  });
+
+  it("records nothing from an objection naming no place", () => {
+    for (const text of ["idw go again", "i dont want to go so early", "actually nvm"]) {
+      expect(objected(text), text).toEqual([]);
+    }
+  });
+
+  it("is not fooled by a positive that contains a negative", () => {
+    expect(objected("why not vietnam")).toEqual([]);
+    expect(objected("philippines not bad")).toEqual([]);
   });
 });

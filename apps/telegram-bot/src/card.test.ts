@@ -641,3 +641,57 @@ describe("the options read as plain text", () => {
     expect(text).not.toMatch(/All \d+ of \d+/);
   });
 });
+
+/**
+ * An objection never removes a destination on its own — that stays the group's
+ * call — but leaving it as prose in the notes meant a place could sit on the
+ * list with nobody noticing somebody had rejected it.
+ */
+describe("destinations somebody has ruled out", () => {
+  const withObjection = (destinations: string[]) =>
+    renderTripCard({
+      ...build([
+        person("p1", "Anthony", [
+          { state: "AVAILABLE" as const, start: "2026-11-02", end: "2026-11-20" },
+        ]),
+      ]),
+      destinations,
+      participants: [
+        ...build([
+          person("p1", "Anthony", [
+            { state: "AVAILABLE" as const, start: "2026-11-02", end: "2026-11-20" },
+          ]),
+        ]).participants,
+        {
+          participantId: "p2",
+          displayName: "Farah",
+          isOrganiser: false,
+          optedOut: false,
+          maxLeaveDays: null,
+          declarations: [],
+          notes: [
+            {
+              kind: "DESTINATION_OBJECTION",
+              text: "idw philippines",
+              destination: "Philippines",
+            },
+          ],
+        },
+      ],
+    });
+
+  it("names the place and who rejected it", () => {
+    expect(withObjection(["Japan", "Philippines"])).toContain(
+      "Philippines — Farah would rather not",
+    );
+  });
+
+  it("says nothing once the place is off the list", () => {
+    expect(withObjection(["Japan"])).not.toContain("would rather not");
+  });
+
+  it("leaves the place on the list — an objection is not a veto", () => {
+    // Disagreement about *where* must not void a trip that works on *when*.
+    expect(withObjection(["Japan", "Philippines"])).toContain("Philippines");
+  });
+});

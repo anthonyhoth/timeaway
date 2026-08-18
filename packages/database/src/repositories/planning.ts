@@ -17,7 +17,7 @@ export interface ParticipantPlanningState {
   optedOut: boolean;
   maxLeaveDays: number | null;
   /** Opinions recorded but never acted on — verbatim, newest last. */
-  notes: { kind: string; text: string }[];
+  notes: { kind: string; text: string; destination?: string | null }[];
   /** Oldest first — the engine's latest-declaration-wins rule depends on it. */
   declarations: {
     state: "AVAILABLE" | "MAYBE" | "UNAVAILABLE" | "UNKNOWN";
@@ -82,16 +82,20 @@ export async function loadTripPlanningState(
       participantId: participantNotes.participantId,
       kind: participantNotes.kind,
       text: participantNotes.originalText,
+      destination: participantNotes.destination,
     })
     .from(participantNotes)
     .innerJoin(participants, eq(participantNotes.participantId, participants.id))
     .where(eq(participants.tripId, tripId))
     .orderBy(asc(participantNotes.createdAt));
 
-  const notesByParticipant = new Map<string, { kind: string; text: string }[]>();
+  const notesByParticipant = new Map<
+    string,
+    { kind: string; text: string; destination?: string | null }[]
+  >();
   for (const n of noteRows) {
     const list = notesByParticipant.get(n.participantId) ?? [];
-    list.push({ kind: n.kind, text: n.text });
+    list.push({ kind: n.kind, text: n.text, destination: n.destination });
     notesByParticipant.set(n.participantId, list);
   }
 

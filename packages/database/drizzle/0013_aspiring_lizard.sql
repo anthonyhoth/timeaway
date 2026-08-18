@@ -1,0 +1,1 @@
+ALTER TABLE "participant_notes" ADD COLUMN "destination" text;

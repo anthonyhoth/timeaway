@@ -143,13 +143,59 @@ export function parseDestinationEdit(
 }
 
 /**
+ * Places the speaker has ruled out, whether or not the trip is considering them.
+ *
+ * `parseDestinationEdits` can only *remove* a destination the trip already has
+ * — there is nothing else to do with one it does not. But "idw philippines"
+ * said before anyone suggests the Philippines is still the most useful thing
+ * in the message: it is the objection that should surface the moment somebody
+ * else proposes it.
+ *
+ * So the objection is extracted independently of the current list, and stored
+ * against the person who made it.
+ */
+const DECISION_SPLIT = /\s*(?:,|;|\band\b|\bbut\b|\bthough\b)\s*/i;
+
+export function parseDestinationObjection(
+  rawText: string,
+  today: ISODate,
+): string[] {
+  const text = rawText.trim();
+  if (!text) return [];
+  if (!REMOVE_WORDS.test(text) || /\bwhy\s+not\b|\bnot\s+bad\b|\bor\s+not\b/i.test(text)) {
+    return [];
+  }
+
+  // Only the segment carrying the objection: "let's go japan, idw philippines"
+  // rules out the Philippines, not Japan.
+  const objecting = text
+    .split(DECISION_SPLIT)
+    .filter((part) => REMOVE_WORDS.test(part) && !/\bwhy\s+not\b/i.test(part));
+  const source = objecting.length > 0 ? objecting.join(" ") : text;
+
+  // The rejection vocabulary has to come out before the name is read, or "idw
+  // philippines" yields a place called "Idw Philippines" — which then fails
+  // vetting and takes the objection with it. `drop` happened to be a filler
+  // word already; `idw` and its neighbours were not.
+  const bare = stripProposalLanguage(source)
+    .replace(REMOVE_WORDS, " ")
+    .replace(/\b(?:go|going|to|anymore|any more|already|alr|lah|leh|lor|sia)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return parseTripRequest(bare, today).destinations.filter((name) =>
+    namesLikelyPlace(name, source),
+  );
+}
+
+/**
  * Connectives that separate one destination decision from the next.
  *
  * "Let's go japan, idw philippines" is two decisions in one breath, and a
  * single-operation parser had to pick: it saw the removal word, found nothing
  * to remove, and returned nothing at all — losing the addition as well.
  */
-const DECISION_SPLIT = /\s*(?:,|;|\band\b|\bbut\b|\bthough\b)\s*/i;
+
 
 /**
  * Every destination decision in a message, in the order they were said.
