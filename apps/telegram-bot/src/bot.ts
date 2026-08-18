@@ -1,6 +1,6 @@
 import type { ConstraintExtractor } from "@timeaway/constraint-parsing";
 import {
-  applyDestinationEdit,
+  applyDestinationEdits,
   describeTripEdit,
   isUnknownAnswer,
   mightContainConstraint,
@@ -2152,11 +2152,14 @@ export function createBot(token: string, deps: BotDeps): Bot {
     edit: NonNullable<ReturnType<typeof parseTripEdit>>,
     current: readonly string[],
   ): Promise<void> {
-    if (edit.destination) {
+    if (edit.destinations) {
+      // Folded in the order they were said: "let's go japan, idw philippines"
+      // is two decisions in one message, and applying only the first lost the
+      // other entirely.
       await setDestinationCandidates(
         deps.db,
         trip.id,
-        applyDestinationEdit(current, edit.destination),
+        applyDestinationEdits(current, edit.destinations),
       );
     }
     if (edit.horizon || edit.duration) {

@@ -20,13 +20,13 @@ describe("a statement about oneself is never a change to the trip", () => {
   it("still reads a genuine change to the plan", () => {
     expect(parse("let's push it to december")).toMatchObject({ horizon: {} });
     expect(parse("make it 5 days")).toMatchObject({ duration: { min: 5 } });
-    expect(parse("let's do Korea instead")).toMatchObject({ destination: {} });
+    expect(parse("let's do Korea instead")).toMatchObject({ destinations: [{}] });
   });
 
   it("still reads a change stated in the first person", () => {
     // "I" alone is not the tell — the availability vocabulary is.
     expect(parse("i think we should do Korea instead")).toMatchObject({
-      destination: {},
+      destinations: [{}],
     });
   });
 });
@@ -59,7 +59,7 @@ describe("planning the trip out loud", () => {
   it("takes the place and the period from one sentence", () => {
     // Naming both is the normal shape of planning aloud.
     expect(plan("we want to go Hainan this year end")).toMatchObject({
-      destination: { op: "ADD", destinations: ["Hainan"] },
+      destinations: [{ op: "ADD", destinations: ["Hainan"] }],
       horizon: { start: "2026-11-15", end: "2027-01-05" },
     });
   });
@@ -67,7 +67,7 @@ describe("planning the trip out loud", () => {
   it("treats a first destination as an addition, not a rewrite", () => {
     // The weakest claim that fits: no organiser approval, nothing discarded.
     expect(plan("let's do Japan")).toMatchObject({
-      destination: { op: "ADD", destinations: ["Japan"] },
+      destinations: [{ op: "ADD", destinations: ["Japan"] }],
       destructive: false,
     });
   });
@@ -86,7 +86,7 @@ describe("planning the trip out loud", () => {
     // "Korea instead" moves the destination; reading a horizon out of it
     // would be inventing one.
     expect(plan("let's go Korea instead", false, ["Japan"])).toMatchObject({
-      destination: { op: "REPLACE", destinations: ["Korea"] },
+      destinations: [{ op: "REPLACE", destinations: ["Korea"] }],
     });
     expect(plan("let's go Korea instead", false, ["Japan"])?.horizon).toBeUndefined();
   });

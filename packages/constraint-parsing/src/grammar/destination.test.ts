@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyDestinationEdit, parseDestinationEdit } from "./destination.js";
+import {
+  applyDestinationEdit,
+  applyDestinationEdits,
+  parseDestinationEdit,
+  parseDestinationEdits,
+} from "./destination.js";
 
 const TODAY = "2026-08-17";
 const parse = (text: string, current: string[] = ["Japan"]) =>
@@ -160,5 +165,57 @@ describe("a first-person objection removes the place", () => {
     expect(parse("idw go again")).toBeNull();
     expect(parse("i dont want to go so early")).toBeNull();
     expect(parse("actually nvm")).toBeNull();
+  });
+});
+
+/**
+ * Founder-reported: "let's go japan, idw philippines" handled neither place.
+ *
+ * A message is one turn but can carry several decisions, and a single-operation
+ * parser had to choose. It saw the removal word first, found no Philippines to
+ * remove, and returned nothing at all — losing the addition with it.
+ */
+describe("several destination decisions in one message", () => {
+  const edits = (text: string, current: string[] = []) =>
+    parseDestinationEdits(text, "2026-08-17", current);
+
+  it("reads an addition and a rejection together", () => {
+    expect(edits("let's go japan, idw philippines", ["Philippines"])).toEqual([
+      { op: "ADD", destinations: ["Japan"] },
+      { op: "REMOVE", destinations: ["Philippines"] },
+    ]);
+  });
+
+  it("still adds the place when the rejected one was never on the list", () => {
+    // Ruling out somewhere that was never a candidate is a no-op, and must not
+    // take the addition down with it.
+    expect(edits("let's go japan, idw philippines")).toEqual([
+      { op: "ADD", destinations: ["Japan"] },
+    ]);
+  });
+
+  it("applies them in the order they were said", () => {
+    expect(
+      applyDestinationEdits(
+        ["Japan"],
+        edits("add taiwan too but idw japan", ["Japan"]),
+      ),
+    ).toEqual(["Taiwan"]);
+  });
+
+  it("judges every decision against the same starting list", () => {
+    // A message is one turn: the removal must not change what the replacement
+    // is measured against.
+    expect(edits("drop japan, korea instead", ["Japan"])).toEqual([
+      { op: "REMOVE", destinations: ["Japan"] },
+      { op: "REPLACE", destinations: ["Korea"] },
+    ]);
+  });
+
+  it("adds both when one decision names two places", () => {
+    // Split into two additions rather than one naming both — the internal
+    // shape differs, the outcome must not.
+    expect(applyDestinationEdits([], edits("lets add korea and taiwan too")))
+      .toEqual(["Korea", "Taiwan"]);
   });
 });

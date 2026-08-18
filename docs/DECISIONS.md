@@ -656,6 +656,44 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-18): a message can carry more than one destination decision
+
+Founder-reported: *"let's go japan, idw philippines"* handled neither place.
+
+`parseDestinationEdit` returns one operation, so a message carrying two had to
+pick. It matched the removal word first, found no Philippines on the list to
+remove, and returned **null** — losing the addition along with it. Both halves
+of the sentence were discarded because one of them was a no-op.
+
+Destination decisions are now parsed per segment and folded in the order they
+were said. Two properties worth keeping straight:
+
+  * **Every segment is judged against the same starting list.** A message is one
+    turn, so in "drop japan, korea instead" the removal must not change what the
+    replacement is measured against.
+  * **A no-op decision costs nothing.** Ruling out somewhere that was never a
+    candidate does nothing and must not take the rest of the sentence with it.
+
+**The more serious finding was underneath.** `parseTripEdit` — the function the
+bot actually calls — declined "idw japan" outright, because a destination change
+was not in its list of things that count as *stating something about the trip*.
+So yesterday's fix, which taught the parser to read first-person objections,
+never reached the bot at all. It was verified against `parseDestinationEdit` and
+that was the wrong door. Naming a destination change now licenses a trip edit on
+its own.
+
+Two things reverted during this, both regressions of my own making: adding "and"
+to the additive markers broke multi-place extraction, because the marker is
+stripped before names are read and "korea and taiwan" merged into one name; and
+letting a bare additive count as a proposal depended on that same change.
+
+**Still open:** a bare "korea or japan", with no verb or frame at all, is not
+read as a suggestion. It was on the simulation agent's list of misses and stays
+there — the fix has to come from the name extractor rather than the proposal
+grammar, since the connective it needs is the one being stripped.
+
+---
+
 ## Decision (2026-08-18): monospace reversed — it cost the readability it bought
 
 Founder, on the `<pre>` block shipped hours earlier: *"I don't like the date

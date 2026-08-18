@@ -111,7 +111,7 @@ describe("trip windows proposed the same way", () => {
 
   it("takes a place and a period from one proposal", () => {
     expect(shape("how about Taiwan in december")).toMatchObject({
-      destination: { op: "ADD", destinations: ["Taiwan"] },
+      destinations: [{ op: "ADD", destinations: ["Taiwan"] }],
       horizon: { start: "2026-12-01", end: "2026-12-31" },
     });
   });

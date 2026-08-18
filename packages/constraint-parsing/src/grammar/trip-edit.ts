@@ -1,6 +1,6 @@
 import type { ISODate } from "@timeaway/shared";
 import type { DestinationEdit } from "./destination.js";
-import { parseDestinationEdit } from "./destination.js";
+import { parseDestinationEdits } from "./destination.js";
 import { statesPersonalConstraint } from "./availability.js";
 import { readProposal } from "./proposals.js";
 import { resolveHorizon } from "./horizon.js";
@@ -21,7 +21,8 @@ export interface DurationEdit {
 }
 
 export interface TripEdit {
-  destination?: DestinationEdit;
+  /** Several, because one message can add a place and rule out another. */
+  destinations?: DestinationEdit[];
   horizon?: DateRange;
   /** Either end may be absent: "minimum 5 days" states a floor only. */
   duration?: DurationEdit;
@@ -173,8 +174,15 @@ export function parseTripEdit(
   // Dates get proposed exactly the way destinations do — "how about December",
   // "December can?", "year end works", "why not next June" — so the same
   // proposal grammar decides whether the trip's shape is being discussed.
+  // Naming a destination change *is* a statement about the trip. Without this,
+  // "idw japan" produced a removal that nothing ever asked for — the parser
+  // declined before looking, so the fix that taught it to read objections never
+  // reached the bot.
+  const destinations = parseDestinationEdits(text, today, currentDestinations);
+
   const proposal = readProposal(text);
   const stated =
+    destinations.length > 0 ||
     EDIT_WORD.test(text) ||
     GROUP_PLAN.test(text) ||
     proposal.proposes ||
@@ -186,8 +194,6 @@ export function parseTripEdit(
   if (!stated) return null;
 
   const planning = GROUP_PLAN.test(text) || readProposal(text).proposes;
-
-  const destination = parseDestinationEdit(text, today, currentDestinations);
 
   // A fallback used to sit here, reading any leftover words as a place when a
   // planning phrase was present. parseDestinationEdit now recognises proposals
@@ -201,19 +207,19 @@ export function parseTripEdit(
   // "Korea instead" moves the destination, not the dates, and reading a
   // horizon out of it would be inventing one.
   const horizon =
-    planning || (!destination && !duration)
+    planning || (destinations.length === 0 && !duration)
       ? (resolveHorizon(text, today) ?? undefined)
       : undefined;
 
-  if (!destination && !duration && !horizon) return null;
+  if (destinations.length === 0 && !duration && !horizon) return null;
 
   const destructive =
-    (destination !== null && destination.op !== "ADD") ||
+    destinations.some((d) => d.op !== "ADD") ||
     duration !== null ||
     horizon !== undefined;
 
   return {
-    destination: destination ?? undefined,
+    destinations: destinations.length > 0 ? destinations : undefined,
     duration: duration ?? undefined,
     horizon,
     destructive,
@@ -223,12 +229,12 @@ export function parseTripEdit(
 /** One-line summary for the approval prompt and the log. */
 export function describeTripEdit(edit: TripEdit): string {
   const parts: string[] = [];
-  if (edit.destination) {
-    const names = edit.destination.destinations.join(", ");
+  for (const change of edit.destinations ?? []) {
+    const names = change.destinations.join(", ");
     parts.push(
-      edit.destination.op === "ADD"
+      change.op === "ADD"
         ? `add ${names}`
-        : edit.destination.op === "REMOVE"
+        : change.op === "REMOVE"
           ? `drop ${names}`
           : `switch to ${names}`,
     );

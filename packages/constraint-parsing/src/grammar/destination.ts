@@ -142,6 +142,54 @@ export function parseDestinationEdit(
   return { op, destinations: named };
 }
 
+/**
+ * Connectives that separate one destination decision from the next.
+ *
+ * "Let's go japan, idw philippines" is two decisions in one breath, and a
+ * single-operation parser had to pick: it saw the removal word, found nothing
+ * to remove, and returned nothing at all — losing the addition as well.
+ */
+const DECISION_SPLIT = /\s*(?:,|;|\band\b|\bbut\b|\bthough\b)\s*/i;
+
+/**
+ * Every destination decision in a message, in the order they were said.
+ *
+ * Segments are parsed independently and against the *same* starting list: a
+ * message is one turn, so "drop japan, korea instead" should not have the
+ * removal change what the replacement is judged against.
+ */
+export function parseDestinationEdits(
+  rawText: string,
+  today: ISODate,
+  currentDestinations: readonly string[],
+): DestinationEdit[] {
+  const segments = rawText.split(DECISION_SPLIT).filter((part) => part.trim());
+
+  const edits: DestinationEdit[] = [];
+  for (const segment of segments) {
+    const edit = parseDestinationEdit(segment, today, currentDestinations);
+    if (edit) edits.push(edit);
+  }
+  if (edits.length > 0) return edits;
+
+  // Unsegmented fallback: "korea or japan" is one decision naming two places,
+  // and splitting it would be wrong even though it happens to merge correctly.
+  const whole = parseDestinationEdit(rawText, today, currentDestinations);
+  return whole ? [whole] : [];
+}
+
+/** Fold several edits over the list, in the order they were said. */
+export function applyDestinationEdits(
+  current: readonly string[],
+  edits: readonly DestinationEdit[],
+  max = 5,
+): string[] {
+  return edits.reduce<string[]>(
+    (list, edit) => applyDestinationEdit(list, edit, max),
+    [...current],
+  );
+}
+
 /** Apply an edit to the current list, capped and de-duplicated. */
 export function applyDestinationEdit(
   current: readonly string[],
