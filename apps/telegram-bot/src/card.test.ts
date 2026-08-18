@@ -698,9 +698,12 @@ describe("destinations somebody has ruled out", () => {
 
 /**
  * Budget is the constraint the research put *above* dates as a reason trips
- * fall apart, and it was buried in "Worth knowing" among everything else
- * somebody happened to say. It belongs beside the dates and the destination,
- * because it is the same kind of fact: a shape the trip has to fit.
+ * fall apart, so it belongs beside the dates and the destination rather than
+ * buried in the notes.
+ *
+ * But the figures people give are approximate — "around 1k", "$700 damn ex" —
+ * and adjudicating them into a hard cap claims a precision nobody offered. The
+ * spread is shown and no ruling is made.
  */
 describe("budget at the top", () => {
   const budget = (text: string) => ({ kind: "BUDGET", text });
@@ -724,25 +727,29 @@ describe("budget at the top", () => {
       })),
     });
 
-  it("states a single ceiling with whose it is", () => {
+  it("shows the spread when people name different figures", () => {
+    expect(
+      withNotes([
+        { who: "Anthony", note: "I only want to spend $500 on flights" },
+        { who: "Dan", note: "$700 damn ex sia" },
+      ]),
+    ).toContain("💰 $500–700");
+  });
+
+  it("calls a lone figure approximate, since it is not the group's", () => {
     expect(
       withNotes([{ who: "Anthony", note: "I only want to spend $500 on flights" }]),
-    ).toContain("💰 under $500 (Anthony)");
+    ).toContain("💰 around $500");
   });
 
-  it("leads with the tightest, since that is the one that binds", () => {
+  it("names nobody — whose figure is whose belongs in the notes", () => {
     const card = withNotes([
-      { who: "Anthony", note: "budget tight, under $800" },
-      { who: "Mei", note: "I only want to spend $500 on flights" },
+      { who: "Anthony", note: "under $500" },
+      { who: "Dan", note: "$700 damn ex sia" },
     ]);
-    expect(card).toContain("under $500 — tightest of 2");
-  });
-
-  it("shows a price called too high without treating it as a budget", () => {
-    // "$700 damn ex" implies a ceiling below $700, and is not one.
-    const card = withNotes([{ who: "Dan", note: "$700 damn ex sia" }]);
-    expect(card).toContain("Dan says $700 is too much");
-    expect(card).not.toContain("under $700");
+    const line = card.split("\n").find((l) => l.startsWith("💰"))!;
+    expect(line).not.toContain("Anthony");
+    expect(line).not.toContain("Dan");
   });
 
   it("sits above the options, not in the notes", () => {

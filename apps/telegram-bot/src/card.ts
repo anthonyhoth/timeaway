@@ -387,52 +387,33 @@ function foldable(title: string, lines: readonly string[]): string {
 }
 
 /**
- * What the group can spend, as one line.
+ * Roughly what the group is working with, as one line.
  *
- * Budget is the constraint the founder's research put *above* dates as a reason
- * trips fall apart, and it was buried in "Worth knowing" among everything else
- * somebody happened to say. It belongs at the top, beside the dates and the
- * destination, because it is the same kind of fact: a shape the trip has to fit.
+ * Budget is the constraint the research put *above* dates as a reason trips
+ * collapse, so it belongs beside the dates and the destination rather than
+ * buried among everything else somebody said. But the figures people give are
+ * approximate — "around 1k", "$700 damn ex" — and adjudicating them into a hard
+ * cap claims a precision nobody offered.
  *
- * The **tightest** limit leads, since that is the one that binds. Prices called
- * too high are shown but not treated as ceilings — "$700 damn ex" implies a
- * budget below $700, and reading it *as* $700 would be generous in exactly the
- * wrong direction.
+ * So the spread is shown and no ruling is made: the group can see they are
+ * $300 apart without the bot deciding whose number wins. Whose figure is whose
+ * stays in the notes below, where the detail belongs.
  */
 function budgetLine(input: CardInput): string | null {
-  const stated = input.participants.flatMap((p) =>
-    (p.notes ?? [])
-      .filter((n) => n.kind === "BUDGET")
-      .map((n) => ({ who: p.displayName, budget: parseBudget(n.text) }))
-      .filter((entry): entry is { who: string; budget: NonNullable<ReturnType<typeof parseBudget>> } =>
-        entry.budget !== null,
-      ),
-  );
-  if (stated.length === 0) return null;
+  const figures = input.participants
+    .flatMap((p) => (p.notes ?? []).filter((n) => n.kind === "BUDGET"))
+    .map((n) => parseBudget(n.text)?.amount)
+    .filter((amount): amount is number => amount !== undefined)
+    .sort((a, b) => a - b);
+  if (figures.length === 0) return null;
 
-  const limits = stated
-    .filter((entry) => entry.budget.limit)
-    .sort((a, b) => a.budget.amount - b.budget.amount);
-  const complaints = stated
-    .filter((entry) => !entry.budget.limit)
-    .sort((a, b) => a.budget.amount - b.budget.amount);
-
-  const parts: string[] = [];
-  if (limits.length > 0) {
-    const tightest = limits[0]!;
-    parts.push(
-      limits.length === 1
-        ? `under ${formatMoney(tightest.budget.amount)} (${esc(tightest.who)})`
-        : `under ${formatMoney(tightest.budget.amount)} — tightest of ${limits.length}`,
-    );
-  }
-  if (complaints.length > 0) {
-    const worst = complaints[0]!;
-    parts.push(
-      `${esc(worst.who)} says ${formatMoney(worst.budget.amount)} is too much`,
-    );
-  }
-  return parts.length > 0 ? `💰 ${parts.join(" · ")}` : null;
+  const low = figures[0]!;
+  const high = figures.at(-1)!;
+  // "Around" on a single figure, because one person's ceiling is not the
+  // group's — it is the only number anyone has said so far.
+  return low === high
+    ? `💰 around ${formatMoney(low)}`
+    : `💰 ${formatMoney(low)}–${formatMoney(high).replace("$", "")}`;
 }
 
 /**
