@@ -2093,6 +2093,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       try {
         await ctx.api.editMessageText(chatId, Number(trip.cardMessageId), text, {
           reply_markup: keyboard,
+          parse_mode: "HTML",
           link_preview_options: { is_disabled: true },
         });
       } catch (error) {
@@ -2108,6 +2109,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
     const message = await ctx.api.sendMessage(chatId, text, {
       reply_markup: keyboard,
+      parse_mode: "HTML",
       link_preview_options: { is_disabled: true },
     });
     await setCardMessageId(deps.db, trip.id, String(message.message_id));

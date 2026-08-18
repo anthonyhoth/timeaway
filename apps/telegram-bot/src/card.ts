@@ -5,6 +5,7 @@ import type {
   ParticipantDiagnostic,
   RankedWindows,
 } from "@timeaway/trip-engine";
+import { bold, collapsible, esc, mono, MONO_COLUMNS } from "./markup.js";
 import {
   formatDateRange,
   formatTripDates,
@@ -86,9 +87,9 @@ function nameOf(
   participants: readonly ParticipantPlanningState[],
   participantId: string,
 ): string {
-  return (
+  return esc(
     participants.find((p) => p.participantId === participantId)?.displayName ??
-    "Someone"
+      "Someone",
   );
 }
 
@@ -294,6 +295,62 @@ function diagnosticLines(input: CardInput): string[] {
 }
 
 /**
+ * The options as a fixed-width block, so the eye can run down a column.
+ *
+ * Held to MONO_COLUMNS because a `<pre>` block scrolls sideways rather than
+ * wrapping, and an option list you have to drag is worse than a plain one. Two
+ * things buy the width back: the month is hoisted out when every option shares
+ * it, and day numbers are right-aligned so "9" and "17" line up instead of
+ * ragging.
+ */
+function optionTable(
+  options: readonly EvaluatedWindow[],
+  travellerCount: number,
+): string {
+  const months = new Set(
+    options.flatMap((w) => [w.window.start.slice(0, 7), w.window.end.slice(0, 7)]),
+  );
+  const oneMonth = months.size === 1;
+
+  const dates = options.map((w, index) => {
+    const month = oneMonth ? "" : ` ${monthOf(w.window.end)}`;
+    return `${index + 1}. ${dayCell(w.window.start)} → ${dayCell(w.window.end)}${month}`;
+  });
+  const stats = options.map((w) =>
+    varyingFacts(w, options, travellerCount).replace(/^ · /, ""),
+  );
+
+  // One line each where it fits. A `<pre>` block scrolls sideways rather than
+  // wrapping, so a row over budget would make the whole list draggable — worse
+  // than spending a second line on the options that need one.
+  const oneLine = dates.map((d, i) => (stats[i] ? `${d}  ${stats[i]}` : d));
+  if (Math.max(...oneLine.map((row) => row.length)) <= MONO_COLUMNS) {
+    return mono(oneLine);
+  }
+
+  // Wrapped, consistently: mixing one- and two-line rows in the same block is
+  // harder to scan than either on its own.
+  return mono(
+    dates.flatMap((d, i) => (stats[i] ? [d, `    ${stats[i]}`] : [d])),
+  );
+}
+
+/** "Wed  9" — weekday fixed, day right-aligned, so the numbers form a column. */
+function dayCell(date: string): string {
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
+    new Date(`${date}T00:00:00Z`).getUTCDay()
+  ]!;
+  return `${weekday} ${String(Number(date.slice(8, 10))).padStart(2, " ")}`;
+}
+
+function monthOf(date: string): string {
+  return [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ][Number(date.slice(5, 7)) - 1]!;
+}
+
+/**
  * What every option in the shortlist has in common, as one line.
  *
  * The engine spreads options across the horizon, so they routinely share a
@@ -330,17 +387,27 @@ function varyingFacts(
     options.some((w) => pick(w) !== pick(options[0]!));
 
   const facts: string[] = [];
-  if (differs((w) => w.window.days)) facts.push(`${window.window.days} days`);
+  if (differs((w) => w.window.days)) facts.push(`${window.window.days}d`);
   if (differs((w) => w.leaveDays)) {
     facts.push(`${window.leaveDays} leave`);
   }
   if (differs((w) => w.counts.available)) {
-    facts.push(`${window.counts.available} of ${travellerCount}`);
+    facts.push(`${window.counts.available}/${travellerCount}`);
   }
   if (window.counts.rosterPending > 0) {
     facts.push(`${window.counts.rosterPending} pending`);
   }
   return facts.length > 0 ? ` · ${facts.join(" · ")}` : "";
+}
+
+/**
+ * Sections that grow without bound — notes, opinions — are collapsed once they
+ * are more than a glance. A trip that runs for weeks accumulates these, and
+ * they must not push the options themselves off a phone screen.
+ */
+function foldable(title: string, lines: readonly string[]): string {
+  if (lines.length <= 2) return [`${title}:`, ...lines].join("\n");
+  return collapsible(`${title} (${lines.length})`, lines);
 }
 
 /** Non-date input already captured, one bullet per person. */
@@ -351,7 +418,7 @@ function notedLines(
     .filter((p) => p.maxLeaveDays !== null)
     .map(
       (p) =>
-        `• ${p.displayName} — up to ${p.maxLeaveDays} leave ${
+        `• ${esc(p.displayName)} — up to ${p.maxLeaveDays} leave ${
           p.maxLeaveDays === 1 ? "day" : "days"
         }`,
     );
@@ -365,7 +432,7 @@ function notedLines(
  * find the one they care about. Stacked, each is answerable on its own.
  */
 function header(input: CardInput): string[] {
-  const lines = [formatDestinations(input.destinations)];
+  const lines = [bold(esc(formatDestinations(input.destinations)))];
 
   if (input.durationMinDays !== null && input.durationMaxDays !== null) {
     // Marked when we assumed it, so nobody mistakes our guess for the group's
@@ -470,13 +537,7 @@ export function renderTripCard(input: CardInput): string {
       // actually differs, so the dates are all that is left on the row.
       const shared = sharedFacts(options, groupTotal(input));
       if (shared) lines.push(shared, "");
-
-      options.forEach((w, index) => {
-        lines.push(
-          `${index + 1}. ${formatTripDates(w.window.start, w.window.end)}` +
-            varyingFacts(w, options, groupTotal(input)),
-        );
-      });
+      lines.push(optionTable(options, groupTotal(input)));
       const attention = attentionLines(options[0]!, input.participants);
       const silent = silentCount(input);
       // Named where we can, counted where we cannot. Leaving them out entirely
@@ -490,7 +551,9 @@ export function renderTripCard(input: CardInput): string {
       }
 
       const notes = notedLines(input.participants);
-      if (notes.length > 0) lines.push("", "Noted so far:", ...notes);
+      if (notes.length > 0) {
+        lines.push("", foldable("Noted so far", notes));
+      }
 
       lines.push(
         "",
@@ -516,15 +579,15 @@ export function renderTripCard(input: CardInput): string {
   // not void a trip that works on *dates* (brief §8 — soft preferences
   // inform, they do not eliminate).
   const noted = input.participants.flatMap((p) =>
-    (p.notes ?? []).slice(-2).map((n) => `• ${p.displayName} — “${n.text}”`),
+    (p.notes ?? []).slice(-2).map((n) => `• ${esc(p.displayName)} — “${esc(n.text)}”`),
   );
-  if (noted.length > 0) lines.push("", "Worth knowing:", ...noted);
+  if (noted.length > 0) lines.push("", foldable("Worth knowing", noted));
 
   const sittingOut = input.participants.filter((p) => p.optedOut);
   if (sittingOut.length > 0) {
     lines.push(
       "",
-      `🙅 ${joinNames(sittingOut.map((p) => p.displayName))} sitting this one out`,
+      `🙅 ${joinNames(sittingOut.map((p) => esc(p.displayName)))} sitting this one out`,
     );
   }
 

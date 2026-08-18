@@ -656,6 +656,54 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-18): the card is sized to a phone, in HTML
+
+The trip card is re-sent and re-edited constantly, so it is the one message
+worth fitting to the screen precisely rather than approximately. Measured
+against an iPhone 14 Pro (393pt wide) at Telegram's default text size, which
+renders body text at 17pt:
+
+    incoming bubble content   ~283pt
+    proportional (SF Pro)     ~34 characters
+    monospace   (SF Mono)     ~28 characters
+
+**Telegram has no table markup.** Columns exist only as padded monospace inside
+a `<pre>` block — and a `<pre>` block does **not wrap**, it scrolls sideways. So
+the monospace figure is the binding constraint: one character too wide and the
+whole option list has to be dragged, which is worse than having no columns at
+all. Everything is held to 26, and a test asserts it, because the failure is
+invisible in a desktop client and unusable on a phone.
+
+Two things buy the width back. The **month is hoisted** out of the rows when
+every option shares one, and **day numbers are right-aligned** so 9 and 17 form
+a column instead of shunting the weekday across:
+
+    1. Wed  9 → Sun 13
+    2. Thu 17 → Mon 21
+    3. Fri 11 → Tue 15
+
+When the options differ enough that the numbers cannot sit beside the dates,
+the whole block **wraps to two lines per option** rather than letting one row
+overflow — consistently, since mixing one- and two-line rows in the same block
+is harder to scan than either alone.
+
+**HTML rather than MarkdownV2.** It reserves three characters instead of
+eighteen, and every name and note on this card is user-supplied. That matters
+more than convenience: Telegram rejects malformed HTML outright, so an
+unescaped angle bracket in someone's display name does not garble the card — it
+makes the message fail to send, and the group sees nothing at all. Escaping is
+done inside the markup helpers rather than at the call sites, so it cannot be
+forgotten.
+
+**Sections that grow without bound collapse.** Notes and opinions accumulate
+over a long-running trip, and an expandable blockquote keeps them from pushing
+the options off the screen.
+
+Verified by sending a rendered card through Telegram's own parser, which
+accepted it including the expandable blockquote.
+
+---
+
 ## Decision (2026-08-18): count the whole chat, not just the people who spoke
 
 Founder asked whether the bot knows every group member once it is added. It

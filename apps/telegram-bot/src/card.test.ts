@@ -7,6 +7,7 @@ import {
 } from "@timeaway/trip-engine";
 import { describe, expect, it } from "vitest";
 import { renderTripCard } from "./card.js";
+import { MONO_COLUMNS } from "./markup.js";
 
 const person = (
   id: string,
@@ -95,7 +96,7 @@ describe("renderTripCard", () => {
       ]),
     );
     expect(card).toMatch(/\d windows work so far/);
-    expect(card).toMatch(/1\. \w{3} \d+ – \w{3} \d+/);
+    expect(card).toMatch(/1\. \w{3} +\d+ → \w{3} +\d+/);
     expect(card).toMatch(/\d of \d free|\d of \d\b/);
     expect(card).toContain("https://timeaway.sg/t/abc123");
   });
@@ -440,7 +441,10 @@ describe("readable options", () => {
     );
     expect(card).toContain("All 5 days");
     // …and then not again on the rows, which carry dates alone.
-    const rows = card.split("\n").filter((line) => /^\d+\. /.test(line));
+    const rows = card
+      .replace(/<\/?pre>/g, "")
+      .split("\n")
+      .filter((line) => /^\d+\. /.test(line));
     expect(rows).toHaveLength(2);
     for (const row of rows) expect(row).not.toMatch(/days|leave|of \d/);
   });
@@ -452,8 +456,10 @@ describe("readable options", () => {
         win("2026-12-26", "2026-12-28", 3, 1),
       ]),
     );
-    expect(card).toContain("3 days");
-    expect(card).toContain("5 days");
+    // Stats move onto their own line beneath each option rather than being
+    // hoisted, since they no longer fit beside the dates on a phone.
+    expect(card).toContain("3d");
+    expect(card).toContain("5d");
     expect(card).not.toContain("All 5 days");
   });
 });
@@ -496,7 +502,7 @@ describe("the invitation card is status, not a tutorial", () => {
 
   it("puts each decision on its own line", () => {
     const card = waiting();
-    expect(card.split("\n")[0]).toBe("Japan");
+    expect(card.split("\n")[0]).toBe("<b>Japan</b>");
     expect(card.split("\n")[1]).toMatch(/days/);
   });
 });
@@ -560,5 +566,87 @@ describe("an honest denominator", () => {
       groupSize: 6,
     });
     expect(card).toContain("Waiting on Anthony, Farah and 4 others.");
+  });
+});
+
+/**
+ * Phone formatting. Widths are checked rather than eyeballed because a `<pre>`
+ * block scrolls sideways instead of wrapping — the failure is invisible in a
+ * desktop client and unusable on a phone.
+ */
+describe("the card fits a phone", () => {
+  const win = (start: string, end: string, days: number, leave: number) => ({
+    window: { start, end, days },
+    leaveDays: leave,
+    counts: {
+      available: 1,
+      maybe: 0,
+      unavailable: 0,
+      unknown: 0,
+      unanswered: 0,
+      rosterPending: 0,
+    },
+    participants: [],
+    feasible: true,
+  });
+  const card = (shortlist: ReturnType<typeof win>[]) =>
+    renderTripCard({
+      ...build([
+        person("p1", "Anthony", [
+          { state: "AVAILABLE" as const, start: "2026-11-02", end: "2026-11-20" },
+        ]),
+      ]),
+      ranked: { feasible: shortlist as never, nearMisses: [] },
+      shortlist: shortlist as never,
+      shortlistSize: 5,
+    });
+  const rows = (text: string) =>
+    (/<pre>([\s\S]*?)<\/pre>/.exec(text)?.[1] ?? "").split("\n").filter(Boolean);
+
+  it("never exceeds the monospace budget, uniform or mixed", () => {
+    const uniform = card([
+      win("2026-12-09", "2026-12-13", 5, 3),
+      win("2026-12-17", "2026-12-21", 5, 3),
+    ]);
+    const mixed = card([
+      win("2026-12-19", "2026-12-23", 5, 2),
+      win("2026-11-28", "2026-12-04", 7, 4),
+    ]);
+    for (const text of [uniform, mixed]) {
+      for (const row of rows(text)) {
+        expect(row.length, row).toBeLessThanOrEqual(MONO_COLUMNS);
+      }
+    }
+  });
+
+  it("lines the day numbers up in a column", () => {
+    // A single-digit day must not shunt the weekday across.
+    const text = card([
+      win("2026-12-09", "2026-12-13", 5, 3),
+      win("2026-12-17", "2026-12-21", 5, 3),
+    ]);
+    const [first, second] = rows(text);
+    expect(first!.indexOf("→")).toBe(second!.indexOf("→"));
+  });
+
+  it("wraps to two lines rather than scrolling sideways", () => {
+    // Mixed stats cannot fit beside the dates, so they take their own line.
+    const mixed = rows(
+      card([
+        win("2026-12-19", "2026-12-23", 5, 2),
+        win("2026-11-28", "2026-12-04", 7, 4),
+      ]),
+    );
+    expect(mixed.length).toBe(4);
+  });
+
+  it("produces HTML Telegram will accept", () => {
+    const text = card([win("2026-12-09", "2026-12-13", 5, 3)]);
+    // Balanced tags, and no stray angle bracket from user content.
+    for (const tag of ["b", "pre"]) {
+      const open = text.match(new RegExp(`<${tag}[ >]`, "g")) ?? [];
+      const close = text.match(new RegExp(`</${tag}>`, "g")) ?? [];
+      expect(open.length, tag).toBe(close.length);
+    }
   });
 });
