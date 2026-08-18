@@ -33,8 +33,21 @@ export const ADD_WORDS =
   /\b(?:also|too|as well|add|another|what about|how about|consider|include)\b/i;
 export const REPLACE_WORDS =
   /\b(?:instead|rather than|change (?:it )?to|switch to|actually)\b/i;
+/**
+ * Taking a place off the list.
+ *
+ * First-person objections count. The earlier rule read "drop Japan" as a
+ * decision about the plan and "I don't want Japan" as merely one person's
+ * view, recording the second only as a note — so the card kept offering a
+ * destination somebody had plainly rejected (founder-reported, reversing the
+ * note-only decision).
+ *
+ * The safety that mattered is kept elsewhere: removal is destructive, so a
+ * non-organiser still gets a confirm button rather than silently editing the
+ * group's plan, and the objection is recorded as a note either way.
+ */
 export const REMOVE_WORDS =
-  /\b(?:drop|remove|cross off|forget|scrap|is out|are out|no longer|not)\b/i;
+  /\b(?:drop|remove|cross off|forget|scrap|is out|are out|no longer|not|idw|dw|dun want|do?n'?t want|dont wanna|don'?t wanna|no more|sick of|bored of|over it)\b/i;
 
 function detectOp(text: string): DestinationEditOp | null {
   // Replace is checked first: "actually let's do Korea instead" carries both

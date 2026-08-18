@@ -83,10 +83,15 @@ export class ExtractorHealth {
  * Names no vendor and admits no billing problem — that is our business, not the
  * group's. It gives them phrasings the grammar handles, so the trip keeps
  * moving instead of stalling on our outage.
+ *
+ * One example per kind of thing the bot listens for — dates, destination,
+ * budget — rather than three variations on dates, which taught the group that
+ * dates were all it understood. And the command is `/calendar`, the date
+ * picker: `/dates` shows the options and picks nothing.
  */
 export const EXTRACTOR_DEGRADED_NOTICE =
   "I didn't catch that one — say it plainly and I'll get it:\n" +
-  "• “can't make it 10–14 Nov”\n" +
-  "• “free the whole of December”\n" +
-  "• “got 5 days leave”\n" +
-  "Or use /dates to pick it on a calendar.";
+  "• \u201ccan't make it 10\u201314 Nov\u201d\n" +
+  "• \u201clet's do Korea too\u201d\n" +
+  "• \u201ctoo ex for me\u201d\n" +
+  "Or /calendar to pick your dates.";

@@ -116,3 +116,49 @@ describe("replace is vetted like everything else", () => {
     expect(parse("actually lets do Bali")).toMatchObject({ op: "REPLACE" });
   });
 });
+
+/**
+ * Founder-reported, reversing an earlier decision.
+ *
+ * The old rule read "drop Japan" as a decision about the plan and "I don't want
+ * Japan" as merely one person's view, recording the second only as a note — so
+ * the card kept offering a destination somebody had plainly rejected.
+ *
+ * The safety that mattered is kept elsewhere: removal is destructive, so a
+ * non-organiser still gets a confirm button rather than silently editing the
+ * group's plan, and the objection is recorded as a note either way.
+ */
+describe("a first-person objection removes the place", () => {
+  const parse = (text: string) =>
+    parseDestinationEdit(text, "2026-08-17", ["Japan", "Korea"]);
+
+  it("removes what the speaker rejected", () => {
+    for (const text of [
+      "Idw to go japan alr",
+      "I dont want Japan anymore",
+      "i don't want japan",
+      "idw japan",
+      "japan no more",
+      "im sick of japan",
+    ]) {
+      expect(parse(text), text).toEqual({
+        op: "REMOVE",
+        destinations: ["Japan"],
+      });
+    }
+  });
+
+  it("removes the place actually named, not the first on the list", () => {
+    expect(parse("i just went korea, idw go again")).toEqual({
+      op: "REMOVE",
+      destinations: ["Korea"],
+    });
+  });
+
+  it("removes nothing when no place is named", () => {
+    // An objection to the trip in general is a note, not an edit.
+    expect(parse("idw go again")).toBeNull();
+    expect(parse("i dont want to go so early")).toBeNull();
+    expect(parse("actually nvm")).toBeNull();
+  });
+});

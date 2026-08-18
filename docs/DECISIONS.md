@@ -656,6 +656,48 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-18): "I don't want Japan" removes Japan — reversing an earlier call
+
+Founder-reported: *"Idw to go japan alr"* and *"I dont want Japan anymore"*
+left Japan on the card.
+
+That was deliberate, and wrong. The earlier rule drew the line at grammatical
+person — *"drop Japan"* is a decision about the plan, *"I don't want to go to
+Japan again"* is one person's view — and recorded the second only as a note.
+The reasoning was sound in the abstract and failed in practice: the card went on
+offering a destination somebody had plainly rejected, and the group had to
+translate their own sentence into the bot's dialect to be heard.
+
+First-person objections now remove: `idw`, `don't want`, `no more`, `sick of`.
+**The safety that actually mattered is untouched** — removal is destructive, so
+a non-organiser still gets a confirm button rather than silently editing the
+group's plan, and the objection is recorded as a note either way, so the
+*reason* survives on the card.
+
+Two guards keep it honest: the place must be one the trip already has, and an
+objection naming no place at all stays a note. *"Idw go again"* removes nothing;
+*"I just went korea, idw go again"* removes Korea, not whatever happens to be
+first on the list.
+
+## Decision (2026-08-18): the outage notice was teaching the wrong lesson
+
+Founder: the notice offered three examples, all of them dates, and pointed at
+the wrong command.
+
+It is the only teaching a group gets in the moment the extractor is down, so
+three ways of saying dates taught them dates were all the bot understood. Now
+one example each of the three things it listens for — a date, a destination, a
+budget:
+
+    • "can't make it 10–14 Nov"
+    • "let's do Korea too"
+    • "too ex for me"
+
+And it points at `/calendar`, which picks dates. `/dates` shows the options and
+picks nothing — the instruction was simply incorrect.
+
+---
+
 ## Decision (2026-08-18): the card is sized to a phone, in HTML
 
 The trip card is re-sent and re-edited constantly, so it is the one message

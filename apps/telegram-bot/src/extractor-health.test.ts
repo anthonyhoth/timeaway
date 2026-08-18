@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyExtractorFailure,
+  EXTRACTOR_DEGRADED_NOTICE,
   ExtractorHealth,
 } from "./extractor-health.js";
 
@@ -105,5 +106,32 @@ describe("acknowledging is not the same as explaining", () => {
     // the handler is unconditional.
     now += 5 * 60 * 1000;
     expect(health.shouldNotify("-100")).toBe(false);
+  });
+});
+
+/**
+ * The notice is what a group sees when the extractor is down, so it is the only
+ * teaching they get in that moment. It listed three ways of saying dates, which
+ * taught them dates were all the bot understood — and pointed at `/dates`,
+ * which shows the options and picks nothing.
+ */
+describe("the degraded notice", () => {
+  it("gives one example of each thing the bot listens for", () => {
+    expect(EXTRACTOR_DEGRADED_NOTICE).toContain("can't make it 10–14 Nov");
+    expect(EXTRACTOR_DEGRADED_NOTICE).toContain("let's do Korea too");
+    expect(EXTRACTOR_DEGRADED_NOTICE).toContain("too ex for me");
+  });
+
+  it("points at the command that actually picks dates", () => {
+    expect(EXTRACTOR_DEGRADED_NOTICE).toContain("/calendar");
+    expect(EXTRACTOR_DEGRADED_NOTICE).not.toContain("/dates");
+  });
+
+  it("names no vendor and admits no billing problem", () => {
+    for (const leak of ["OpenAI", "credit", "quota", "API", "billing"]) {
+      expect(EXTRACTOR_DEGRADED_NOTICE.toLowerCase()).not.toContain(
+        leak.toLowerCase(),
+      );
+    }
   });
 });
