@@ -656,6 +656,40 @@ Errors are classified (`telegram_api`, `network`, `database`, `unknown`) so patt
 
 ---
 
+## Decision (2026-08-18): one reaction per message, and budget on the face of the card
+
+Two founder reports.
+
+**A message was getting two reactions.** A budget line records a note *and*
+fails availability parsing, so the group saw ✍ and 🤔 on the same message — two
+answers to one question. The rule is now single: 🤔 means *nothing* was
+recorded and the notice is the reply, so it never fires on a message we
+understood in part.
+
+**Budget was buried.** The research put cost *above* dates as a reason group
+trips collapse, and it was sitting in "Worth knowing" among everything else
+somebody happened to say. It now sits under the header beside the dates and the
+destination, because it is the same kind of fact: a shape the trip has to fit.
+
+    💰 under $500 (Anthony)
+    💰 under $500 — tightest of 2 · Dan says $700 is too much
+
+**The tightest limit leads**, since that is the one that binds. A single figure
+carries the name; several carry the count instead, because the list is the
+detail and the ceiling is the decision.
+
+**A price called too high is not a ceiling.** "$700 damn ex sia" implies a
+budget *below* $700 and states nothing, so it is shown as what it is —
+"$700 is too much" — rather than recorded as a $700 budget, which would be
+generous in exactly the wrong direction.
+
+Parsed from the note's stored words at render time rather than kept in its own
+column: one source of truth, and no migration to keep in step with a parser
+that is still changing. One bug caught doing it — the amount pattern matched
+"150" of "1500" and quietly cut the budget by nine tenths.
+
+---
+
 ## Decision (2026-08-18): an exclusion is a fact about a place, not a sentence
 
 Founder: *"let's go japan, idw philippines" should add Japan and flag that the

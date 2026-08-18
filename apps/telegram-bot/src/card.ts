@@ -5,6 +5,7 @@ import type {
   ParticipantDiagnostic,
   RankedWindows,
 } from "@timeaway/trip-engine";
+import { formatMoney, parseBudget } from "@timeaway/constraint-parsing";
 import { bold, collapsible, esc } from "./markup.js";
 import {
   formatDateRange,
@@ -386,6 +387,55 @@ function foldable(title: string, lines: readonly string[]): string {
 }
 
 /**
+ * What the group can spend, as one line.
+ *
+ * Budget is the constraint the founder's research put *above* dates as a reason
+ * trips fall apart, and it was buried in "Worth knowing" among everything else
+ * somebody happened to say. It belongs at the top, beside the dates and the
+ * destination, because it is the same kind of fact: a shape the trip has to fit.
+ *
+ * The **tightest** limit leads, since that is the one that binds. Prices called
+ * too high are shown but not treated as ceilings — "$700 damn ex" implies a
+ * budget below $700, and reading it *as* $700 would be generous in exactly the
+ * wrong direction.
+ */
+function budgetLine(input: CardInput): string | null {
+  const stated = input.participants.flatMap((p) =>
+    (p.notes ?? [])
+      .filter((n) => n.kind === "BUDGET")
+      .map((n) => ({ who: p.displayName, budget: parseBudget(n.text) }))
+      .filter((entry): entry is { who: string; budget: NonNullable<ReturnType<typeof parseBudget>> } =>
+        entry.budget !== null,
+      ),
+  );
+  if (stated.length === 0) return null;
+
+  const limits = stated
+    .filter((entry) => entry.budget.limit)
+    .sort((a, b) => a.budget.amount - b.budget.amount);
+  const complaints = stated
+    .filter((entry) => !entry.budget.limit)
+    .sort((a, b) => a.budget.amount - b.budget.amount);
+
+  const parts: string[] = [];
+  if (limits.length > 0) {
+    const tightest = limits[0]!;
+    parts.push(
+      limits.length === 1
+        ? `under ${formatMoney(tightest.budget.amount)} (${esc(tightest.who)})`
+        : `under ${formatMoney(tightest.budget.amount)} — tightest of ${limits.length}`,
+    );
+  }
+  if (complaints.length > 0) {
+    const worst = complaints[0]!;
+    parts.push(
+      `${esc(worst.who)} says ${formatMoney(worst.budget.amount)} is too much`,
+    );
+  }
+  return parts.length > 0 ? `💰 ${parts.join(" · ")}` : null;
+}
+
+/**
  * Places somebody has ruled out that are still on the table.
  *
  * An objection never removes a destination on its own — that stays the group's
@@ -459,6 +509,8 @@ function header(input: CardInput): string[] {
  */
 export function renderTripCard(input: CardInput): string {
   const lines = header(input);
+  const budget = budgetLine(input);
+  if (budget) lines.push(budget);
   lines.push("");
 
   if (input.selected) {

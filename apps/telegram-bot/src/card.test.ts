@@ -695,3 +695,65 @@ describe("destinations somebody has ruled out", () => {
     expect(withObjection(["Japan", "Philippines"])).toContain("Philippines");
   });
 });
+
+/**
+ * Budget is the constraint the research put *above* dates as a reason trips
+ * fall apart, and it was buried in "Worth knowing" among everything else
+ * somebody happened to say. It belongs beside the dates and the destination,
+ * because it is the same kind of fact: a shape the trip has to fit.
+ */
+describe("budget at the top", () => {
+  const budget = (text: string) => ({ kind: "BUDGET", text });
+  const withNotes = (notes: { who: string; note: string }[]) =>
+    renderTripCard({
+      ...build([
+        person("p1", "Anthony", [
+          { state: "AVAILABLE" as const, start: "2026-11-02", end: "2026-11-20" },
+        ]),
+      ]),
+      participants: notes.map((n, index) => ({
+        participantId: `p${index + 1}`,
+        displayName: n.who,
+        isOrganiser: index === 0,
+        optedOut: false,
+        maxLeaveDays: null,
+        declarations: [
+          { state: "AVAILABLE" as const, start: "2026-11-02", end: "2026-11-20" },
+        ],
+        notes: [budget(n.note)],
+      })),
+    });
+
+  it("states a single ceiling with whose it is", () => {
+    expect(
+      withNotes([{ who: "Anthony", note: "I only want to spend $500 on flights" }]),
+    ).toContain("💰 under $500 (Anthony)");
+  });
+
+  it("leads with the tightest, since that is the one that binds", () => {
+    const card = withNotes([
+      { who: "Anthony", note: "budget tight, under $800" },
+      { who: "Mei", note: "I only want to spend $500 on flights" },
+    ]);
+    expect(card).toContain("under $500 — tightest of 2");
+  });
+
+  it("shows a price called too high without treating it as a budget", () => {
+    // "$700 damn ex" implies a ceiling below $700, and is not one.
+    const card = withNotes([{ who: "Dan", note: "$700 damn ex sia" }]);
+    expect(card).toContain("Dan says $700 is too much");
+    expect(card).not.toContain("under $700");
+  });
+
+  it("sits above the options, not in the notes", () => {
+    const card = withNotes([{ who: "Anthony", note: "under $500" }]);
+    const budgetAt = card.indexOf("💰");
+    const optionsAt = card.search(/^\d+\. /m);
+    expect(budgetAt).toBeGreaterThan(-1);
+    expect(budgetAt).toBeLessThan(optionsAt);
+  });
+
+  it("says nothing when nobody has named a figure", () => {
+    expect(withNotes([{ who: "Anthony", note: "budget is tight" }])).not.toContain("💰");
+  });
+});

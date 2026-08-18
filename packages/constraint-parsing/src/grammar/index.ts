@@ -14,3 +14,4 @@ export * from "./multi-span.js";
 export * from "./proposals.js";
 export * from "./continuation.js";
 export * from "./opaque.js";
+export * from "./budget.js";

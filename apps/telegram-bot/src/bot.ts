@@ -1267,6 +1267,10 @@ export function createBot(token: string, deps: BotDeps): Bot {
      * the wordier explanation still held back to once an hour.
      */
     const markUnparsed = async (): Promise<void> => {
+      // Never on a message we understood in part. A budget line records a note
+      // *and* fails availability parsing, and the group was seeing ✍ and 🤔 on
+      // the same message — two answers to one question.
+      if (noted) return;
       try {
         await ctx.react("🤔");
       } catch (error) {
@@ -1441,7 +1445,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     // resolution we don't have yet — skip rather than guess. TODO(task 8+).
     if (result.subjectName) return finish(noted);
     if (result.declarations.length === 0 && result.maxLeaveDays === null) {
-      if (!noted) await markUnparsed();
+      await markUnparsed();
       return finish(noted);
     }
 
