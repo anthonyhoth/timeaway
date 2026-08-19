@@ -41,7 +41,7 @@ const NEGATIVE =
  * equivalents parsed.
  */
 const POSITIVE =
-  /\b(?:can(?:\s+make\s+it)?|free|avail(?:able)?|ok(?:ay|ok)?|works? for me|fine (?:with|for) me|fine lah|count me in|i'?m in|im in|on for|all good|no (?:prob(?:lem)?|issue)|sure|good for me|up for|steady|shiok|game|chill|fine|jio me|no issue|why not|will try|try to make)\b|(?:i'?m|im|i)\s+on\b|\bon\s*$/i;
+  /\b(?:can(?:\s+make\s+it)?|free|avail(?:able)?|ok(?:ay|ok)?|works? for me|fine (?:with|for) me|fine lah|count me in|i'?m in|im in|on for|all good|no (?:prob(?:lem)?|issue)|sure|good for me|up for|steady|shiok|game|chill|fine|jio me|no issue|why not|will try|try to make|idm|dun mind|don'?t mind|no preference|fine by me|either can|both can)\b|(?:i'?m|im|i)\s+on\b|\bon\s*$/i;
 
 /** Explicitly cannot forecast yet — distinct from silence (UNANSWERED). */
 const UNKNOWN =
@@ -135,7 +135,7 @@ const HEDGED_POSITIVE =
  * exactly this reason; this one only ever sees ambient conversation.
  */
 const OPEN_ENDED =
-  /\b(?:when ?ever|any ?time|any day|any dates?|all dates?|all good|flexible|no preference|dun ?mind|don'?t mind|up to (?:you|u|yall|the group))\b/i;
+  /\b(?:when ?ever|any ?time|any day|any dates?|all dates?|all good|flexible|no preference|idm|dun ?mind|don'?t mind|up to (?:you|u|yall|the group)|chin chai|anything (?:also )?can|any(?:thing)? can)\b/i;
 
 /**
  * "I don't mind" with something after it is about *that thing*, not about the

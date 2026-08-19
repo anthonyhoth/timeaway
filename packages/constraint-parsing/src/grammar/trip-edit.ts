@@ -170,6 +170,11 @@ export function parseTripEdit(
   // many dates it names. ABOUT_THEMSELVES caught only pronoun-adjacent phrasing;
   // this catches the obligations people actually describe.
   if (ABOUT_THEMSELVES.test(text) || statesPersonalConstraint(text)) return null;
+  // Only *sceptical* questions are vetoed, not every question. "December can?"
+  // and "taiwan can anot" are how a proposal is phrased here — the question is
+  // the suggestion. "Meh" is different: it challenges the premise rather than
+  // offering one, so it proposes nothing to apply.
+  if (/\b(?:meh|izzit|is ?it)\s*\??\s*$/i.test(text)) return null;
 
   // Dates get proposed exactly the way destinations do — "how about December",
   // "December can?", "year end works", "why not next June" — so the same
