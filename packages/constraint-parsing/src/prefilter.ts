@@ -21,6 +21,7 @@ import {
 import { IN_WORDS, OUT_WORDS } from "./grammar/participation.js";
 import {
   ADDITIVE_MARKER,
+  ASSENT_FRAME,
   ASSESSMENT_FRAME,
   PROPOSAL_FRAME,
   PROPOSAL_TAG,
@@ -61,6 +62,9 @@ const PATTERNS: RegExp[] = [
   // were supposed to agree.
   PROPOSAL_FRAME,
   ASSESSMENT_FRAME,
+  // "idm" and "idw" are the abbreviations people type, and were in no list at
+  // all — so the message was discarded before any parser could read it.
+  ASSENT_FRAME,
   ADDITIVE_MARKER,
   PROPOSAL_TAG,
   // Shared for the same reason: "korea instead lah" is a *destructive* replace

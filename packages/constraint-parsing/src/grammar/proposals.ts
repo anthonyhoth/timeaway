@@ -44,6 +44,21 @@ export const PROPOSAL_FRAME =
  * cannot be trusted on their own to identify a *place*. See the plausibility
  * requirement in `namesLikelyPlace`.
  */
+/**
+ * Assent — going along with something rather than proposing it.
+ *
+ * The "abdication" class the research flagged: "idm", "up to you", "whatever
+ * you all decide". It is agreement without commitment, and it is how a group
+ * ends up looking settled when nobody has actually chosen. Recorded as a weak
+ * yes on whatever was named, never as championing it.
+ *
+ * "idm" and "idw" are the abbreviations people actually type, and neither was
+ * in any vocabulary — so "idm japan" was discarded at the gate and, spelled
+ * out, misread as a year of free time.
+ */
+export const ASSENT_FRAME =
+  /\b(?:idm|i\s*dun\s*mind|i\s*don'?t\s*mind|dun\s*mind|don'?t\s*mind|no preference|fine by me|fine with me|ok with me|okay with me|either (?:is fine|works|one)|any(?:thing)? (?:also )?can|up to (?:you|u|yall|y'all|the group)|whatever (?:you|u|yall) (?:all )?(?:decide|want|say)|i follow|follow (?:you|u|yall|majority)|no strong (?:feelings|preference)|not fussy|not picky)\b/i;
+
 export const ASSESSMENT_FRAME =
   /\b(?:is|are|sounds?|looks?|seems?|feels?)\s+(?:quite\s+|damn\s+|super\s+|very\s+|pretty\s+|also\s+)?(?:fine|good|great|nice|ok(?:ay)?|cool|fun|interesting|decent|solid|alright|awesome|shiok|steady|power|not bad)\b|\b(?:works?|work for me|not bad|sounds good|can lah|can leh|can lor|can sia|can one|can ah|can\b|okay|ok\b|steady|shiok|on lah|i'?m down|im down|down for it|game|sure can)\b/i;
 
@@ -155,7 +170,14 @@ export function stripProposalLanguage(text: string): string {
   return text
     .replace(PROPOSAL_FRAME, " ")
     .replace(ASSESSMENT_FRAME, " ")
-    .replace(ADDITIVE_MARKER, " ")
+    .replace(ASSENT_FRAME, " ")
+    // Everything additive except "or", which is load-bearing: the name
+    // extractor splits on it, and stripping it merged "korea or japan" into a
+    // single place called Korea Japan that then failed vetting.
+    .replace(
+      /\b(?:too|also|as well|aswell|on top|plus|additionally|another option|other option|alternatively)\b/gi,
+      " ",
+    )
     .replace(
       /\b(?:leh|lah|lor|hor|meh|sia|ah|ar|liao|one|or not|thoughts|how)\b/gi,
       " ",
@@ -180,7 +202,10 @@ export interface ProposalShape {
 
 export function readProposal(text: string): ProposalShape {
   const framed = PROPOSAL_FRAME.test(text);
-  const assessed = ASSESSMENT_FRAME.test(text) || PROPOSAL_TAG.test(text);
+  const assessed =
+    ASSESSMENT_FRAME.test(text) ||
+    ASSENT_FRAME.test(text) ||
+    PROPOSAL_TAG.test(text);
   return {
     proposes: framed || assessed,
     additive: ADDITIVE_MARKER.test(text),

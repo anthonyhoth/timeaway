@@ -138,6 +138,20 @@ const OPEN_ENDED =
   /\b(?:when ?ever|any ?time|any day|any dates?|all dates?|all good|flexible|no preference|dun ?mind|don'?t mind|up to (?:you|u|yall|the group))\b/i;
 
 /**
+ * "I don't mind" with something after it is about *that thing*, not about the
+ * calendar.
+ *
+ * Bare, it means fully flexible — the open-ended reading below is right. Given
+ * an object it is assent to whatever was named, and "i dont mind japan" was
+ * being recorded as **available across the entire horizon**: nine months of
+ * availability inferred from a remark about a destination.
+ *
+ * Particles are not objects. "I dun mind lah" is still the bare form.
+ */
+const MIND_HAS_OBJECT =
+  /\b(?:idm|i\s*dun\s*mind|i\s*don'?t\s*mind|dun\s*mind|don'?t\s*mind|no preference (?:for|on))\s+(?!lah\b|leh\b|lor\b|sia\b|ah\b|one\b|really\b|actually\b|either\b|too\b|also\b)\S/i;
+
+/**
  * Obligations that read as hard unavailability in this segment.
  *
  * National Service is the sharpest case and deserves its own vocabulary: an
@@ -381,6 +395,7 @@ export function parseAvailabilityMessage(
   if (
     !dateRef &&
     OPEN_ENDED.test(text) &&
+    !MIND_HAS_OBJECT.test(text) &&
     !NEGATIVE.test(text) &&
     !UNKNOWN.test(text)
   ) {
