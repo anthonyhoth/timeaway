@@ -2272,3 +2272,59 @@ instance (the teacher listing three school holidays gets one recorded and the
 rest of the horizon ruled out — the opaque-period path already exists for this
 shape and asking is probably right); loose relative words resolve to a single
 day near today; and leave arithmetic said aloud still reads as a trip length.
+
+---
+
+## Decision (2026-08-21): date-shape.ts — the third time one fix lived in one parser
+
+A third replay — four chats in registers the grammar had not seen, 586 messages
+— found the open-ended-floor fix from the first sweep living in
+`resolveHorizon` and absent from `parseAvailabilityMessage`, which resolves its
+own dates. "Dec 12 onwards i free" was recorded as **the 12th of December**:
+three weeks offered, one day stored, and the message acknowledged.
+
+That is the same structural mistake as sweep one's rejection rule and sweep
+two's ownership rules. `stance.ts` fixed those instances; it did not fix the
+shape. **`grammar/date-shape.ts`** now owns the questions about a date
+reference's edges — is there a floor with no ceiling, and did the speaker state
+both ends — and both parsers ask it.
+
+**A range with both ends stated is finished.** "Mid yr exam 10-21 may" was
+recorded as 11–20 May: "mid" belongs to the exam, and it was trimming a day off
+each side of dates given exactly. A sub-period qualifier may no longer move a
+range the speaker closed themselves.
+
+Two things this turned up on the way.
+
+*The first attempt made it worse.* Skipping the sub-period reader when a closed
+range is present left `findMonthRange` to answer, and its note — "explicit day
+range" — was not in `SUB_PERIOD_NOTES`, so the qualifier guard declined the
+message outright. A one-day-off answer had become no answer. The note is now in
+that set for exactly the reason "chrono range" already was: a range that states
+both edges has already honoured any narrowing word inside it.
+
+*It recovered a constraint nobody knew was being lost.* "Ok decision: 24-30 june
+first choice, 7-13 sep backup" previously recorded **nothing** — "first choice"
+was being read as a sub-period qualifier and the whole message escalated. It now
+records 24–30 June. The second window is still dropped, which is a separate open
+finding.
+
+**Register is the largest single predictor of accuracy measured so far**, and it
+is not addressed here. Two colleagues writing careful multi-clause English
+produced a flagged verdict every third message; the code-switching group chat,
+one every twenty-two. Malay, Tamil and Hokkien vocabulary passed through without
+a single wrong claim — the gate drops what it does not know rather than guessing.
+Long English sentences give the grammar several claims to choose between and it
+takes the wrong one. Whether that matters is a product question: the target user
+is Telegram-native and 23–29, and if nobody in that band writes like this the
+finding is a curiosity. If one person in every group does, it is the largest
+number in three sweeps.
+
+**Still open:** a second window inside the same month is dropped ("1-13 june or
+24-30 june" keeps only the first, though cross-month "or" works); assent
+carrying "actually" becomes a destructive REPLACE of the whole shortlist; two
+more nonsense destinations ("Least" from "at least", "But Where" from "ok im in
+but where") bringing that class to five distinct causes; a calendar written as a
+list ("mar: no. apr: yes. may: maybe") is read as nothing; recurring periods
+capture only their first instance; and loose relative words still resolve to a
+single day near today.

@@ -84,6 +84,44 @@ function smellsOf(v: Verdict): Smell[] {
       out.push({ code: "AVAIL-ON-REJECTION", why: "declared free on a period being ruled out" });
   }
 
+  // A message naming several windows should not come back with one. The
+  // teacher listing three school holidays had two of them silently dropped,
+  // and nothing in this tool could see it.
+  if (v.outcome === "AVAILABILITY") {
+    // Real month spellings only: "mar[a-z]*" also matches "mark", which had
+    // this flagging a message about exam marking as naming two windows.
+    const months = new Set(
+      (v.text
+        .toLowerCase()
+        .match(
+          /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/g,
+        ) ?? []).map((m) => m.slice(0, 3)),
+    );
+    const ranges = (v.text.match(/\d{1,2}(?:\/\d{1,2})?\s*(?:-|–|to)\s*\d{1,2}/g) ?? []).length;
+    const named = Math.max(months.size, ranges);
+    const claimed = (d.match(/"start"/g) ?? []).length;
+    if (named >= 2 && claimed < named)
+      out.push({
+        code: "AVAIL-WINDOWS-DROPPED",
+        why: `message names ${named} windows, recorded ${claimed}`,
+      });
+  }
+
+  // The Cry / CENT / Again class: a destination nobody would recognise, from a
+  // word that was never capitalised in the original either.
+  if (v.outcome === "TRIP_EDIT" || v.outcome === "OPTION_REFERENCE") {
+    for (const m of d.matchAll(/"destinations":\[([^\]]*)\]/g)) {
+      for (const raw of m[1]!.matchAll(/"([^"]+)"/g)) {
+        const name = raw[1]!;
+        if (name === "ADD" || name === "REMOVE" || name === "REPLACE") continue;
+        const known = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+        const titleCased = new RegExp(`\\b${name}\\b`).test(v.text);
+        if (!titleCased && known.test(v.text) && !/^(?:japan|korea|taiwan|vietnam|bali|thailand|hainan|perth|da nang|bangkok|seoul|tokyo|osaka|taipei|penang|kl|batam|bintan)$/i.test(name))
+          out.push({ code: "EDIT-DEST-SUSPECT", why: `"${name}" was never capitalised in the message` });
+      }
+    }
+  }
+
   if (v.outcome === "CONTINUATION") {
     const prev = /joined to "([^"]*)"/.exec(d)?.[1] ?? "";
     // A fragment that continues a dates statement should share some vocabulary

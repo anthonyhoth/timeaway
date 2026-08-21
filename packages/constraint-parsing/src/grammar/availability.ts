@@ -1,5 +1,6 @@
 import type { DeclaredAvailabilityState } from "@timeaway/shared";
 import type { ExtractionContext, ExtractionResult } from "../types.js";
+import { namesClosedRange, widenOpenEndedFloor } from "./date-shape.js";
 import { MONTH_RE, findMonthRange } from "./months.js";
 import type { FoundPeriod } from "./periods.js";
 import { findFuzzyPeriod, findRelativePeriod } from "./periods.js";
@@ -64,6 +65,11 @@ const SUB_PERIOD_NOTES = new Set([
   // A two-ended chrono span states both edges outright ("dec 20th till jan
   // 2nd"), so the narrowing word it contains has already been honoured.
   "chrono range",
+  // Same reasoning for a written-out range: "mid yr exam 10-21 may" gives both
+  // edges, and the "mid" belongs to the exam rather than to the dates. Without
+  // this the message was declined outright once the qualifier stopped being
+  // allowed to move them.
+  "explicit day range",
 ]);
 
 /**
@@ -289,7 +295,13 @@ function resolveBySpecificity(text: string, today: string): FoundPeriod | null {
   const narrower =
     // Ahead of the whole-month matcher: "first 3 weeks of Jan" must narrow to
     // those days, not widen to all of January.
-    findSubPeriod(text, today, yearHint, within) ??
+    //
+    // Unless the speaker already gave both ends. "Mid yr exam 10-21 may" is a
+    // range with a qualifier belonging to a different noun, and applying it
+    // trimmed a day off each side of dates that were stated exactly.
+    (namesClosedRange(text)
+      ? null
+      : findSubPeriod(text, today, yearHint, within)) ??
     findMonthRange(text, today, yearHint);
 
   if (!scope) {
@@ -299,7 +311,6 @@ function resolveBySpecificity(text: string, today: string): FoundPeriod | null {
     // being wrong in the right direction.
     return narrower ?? findChronoPeriod(text, today);
   }
-  if (!narrower) return scope;
   if (!narrower) return scope;
 
   const nested =
@@ -323,7 +334,11 @@ function findDateReference(
   horizonStart?: string | null,
   horizonEnd?: string | null,
 ): FoundPeriod | null {
-  const found = resolveBySpecificity(text, today);
+  const raw = resolveBySpecificity(text, today);
+  // "Dec 12 onwards" names a floor, not the 12th.
+  const found = raw
+    ? { ...raw, range: widenOpenEndedFloor(raw.range, text) }
+    : raw;
   if (!found || !horizonStart || !horizonEnd) return found;
 
   const overlaps = (p: FoundPeriod) =>
