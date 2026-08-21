@@ -16,11 +16,31 @@
  * 28-30 June" is a new declaration, not a bare retraction, and the ordinary
  * path already handles it correctly.
  */
+import { MONTH_RE } from "./months.js";
+
 export type Reversal = { kind: "BARE" };
 
 /** Explicit undo language. */
 const RETRACTION =
   /\b(?:n[ve]?vm|nvmd|never ?mind|scratch that|ignore (?:that|me|what i)|forget (?:that|it|what i)|disregard|cancel that|undo|retract|my bad|as you were)\b/i;
+
+/**
+ * The same verbs with a named object rather than a bare "that".
+ *
+ * People say what they are taking back — "scratch my march thing", "ignore my
+ * nov" — and every pattern above required the literal word "that", so the
+ * retraction was missed entirely. The message then fell through to the
+ * trip-edit parser, which read the month in it as a request and pointed the
+ * whole trip at the dates the speaker was in the middle of correcting.
+ *
+ * The object has to be a month or a word meaning "what I said". Without that
+ * restriction "forget my passport" would read as a retraction.
+ */
+const RETRACTION_QUALIFIED = new RegExp(
+  `\\b(?:scratch|retract|ignore|disregard|cancel|forget)\\s+(?:my|the|that|this)\\s+(?:\\w+\\s+){0,2}?` +
+    `(?:${MONTH_RE}|thing|one|msg|message|dates?|entry|reply|answer|comment|earlier|previous)\\b`,
+  "i",
+);
 
 /**
  * A change of plans, stated without naming what changed. "Anymore" and "liao"
@@ -40,7 +60,12 @@ const ACTUALLY_NEGATIVE =
 export function parseReversal(rawText: string): Reversal | null {
   const text = rawText.trim();
   if (!text) return null;
-  if (RETRACTION.test(text) || NO_LONGER.test(text) || ACTUALLY_NEGATIVE.test(text)) {
+  if (
+    RETRACTION.test(text) ||
+    RETRACTION_QUALIFIED.test(text) ||
+    NO_LONGER.test(text) ||
+    ACTUALLY_NEGATIVE.test(text)
+  ) {
     return { kind: "BARE" };
   }
   return null;

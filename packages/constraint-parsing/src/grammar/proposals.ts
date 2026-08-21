@@ -147,11 +147,17 @@ export function namesLikelyPlace(
   }
 
   // Capitalised mid-sentence, ignoring the first word, where a capital says
-  // nothing. Chat is mostly lowercase, so this is a real signal when present.
+  // nothing. Chat is mostly lowercase, so this is a real signal when present —
+  // but only in Title Case. ALL CAPS is emphasis, not a proper noun, and
+  // reading it as one turned "to the CENT??" — someone appalled that a date
+  // split the bill exactly — into a destination called CENT.
   const words = originalText.trim().split(/\s+/);
-  return words
-    .slice(1)
-    .some((word) => new RegExp(`^${escape(name.split(" ")[0]!)}`, "i").test(word) && /^[A-Z]/.test(word));
+  return words.slice(1).some((word) => {
+    if (!new RegExp(`^${escape(name.split(" ")[0]!)}`, "i").test(word)) return false;
+    const letters = word.replace(/[^\p{L}]/gu, "");
+    if (!/^\p{Lu}/u.test(letters)) return false;
+    return !(letters.length > 1 && letters === letters.toUpperCase());
+  });
 }
 
 function escape(text: string): string {
@@ -168,6 +174,11 @@ function escape(text: string): string {
  */
 export function stripProposalLanguage(text: string): string {
   return text
+    // Sentence boundaries become separators before any frame is removed.
+    // Stripping "ok voting." and "one" from "ok voting. taiwan / da nang /
+    // korea. pick one" left "korea pick" as a single candidate, which failed
+    // vetting and took the group's third option down with it.
+    .replace(/([\p{L}\d])\s*[.;!?]+(\s|$)/gu, "$1, ")
     .replace(PROPOSAL_FRAME, " ")
     .replace(ASSESSMENT_FRAME, " ")
     .replace(ASSENT_FRAME, " ")
@@ -186,7 +197,11 @@ export function stripProposalLanguage(text: string): string {
       /\b(?:could|would|should|shall|might|must|will|do|does|did|go|going|goes|be|been|is|are|was|were|am|the|a|an|think|thought|guess|reckon|feel|say|said|really|quite|just|still|then|actually|instead)\b/gi,
       " ",
     )
-    .replace(/[?!.,]+/g, " ")
+    // The comma survives for the same reason "or" does above: the name
+    // extractor splits on it, and removing it merges two candidates into one
+    // that then fails vetting and takes both down.
+    .replace(/[?!.]+/g, " ")
+    .replace(/\s*,\s*/g, ", ")
     .replace(/\s+/g, " ")
     .trim();
 }

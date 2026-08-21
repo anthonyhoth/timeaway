@@ -1,7 +1,12 @@
 import type { ISODate } from "@timeaway/shared";
 import type { DestinationEdit } from "./destination.js";
 import { parseDestinationEdits } from "./destination.js";
-import { statesPersonalConstraint } from "./availability.js";
+import { MONTH_RE } from "./months.js";
+import { parseReversal } from "./reversal.js";
+import {
+  statesPersonalConstraint,
+  statesThirdPartyConstraint,
+} from "./availability.js";
 import { readProposal } from "./proposals.js";
 import { resolveHorizon } from "./horizon.js";
 import type { DateRange } from "./periods.js";
@@ -62,12 +67,48 @@ const GROUP_PLAN =
 const EDIT_WORD =
   /\b(?:also|too|as well|add|another|what about|how about|consider|include|instead|rather than|change (?:it )?to|switch to|actually|make it|push (?:it )?to|move (?:it )?to|drop|remove|cross off|forget|scrap|is out|are out|no longer|not)\b/i;
 
-const NAMED_DURATIONS: { pattern: RegExp; min: number; max: number }[] = [
-  { pattern: /\blong weekend\b/i, min: 3, max: 4 },
-  { pattern: /\b(?:a |one )?fortnight\b/i, min: 14, max: 14 },
-  { pattern: /\btwo weeks?\b/i, min: 14, max: 14 },
-  { pattern: /\b(?:a|one)\s+week\b/i, min: 7, max: 7 },
-  { pattern: /\bweekend\b/i, min: 2, max: 3 },
+/**
+ * A month named in order to *rule it out*.
+ *
+ * simulation.test.ts already guards the "nov too rainy" shape. A replay of
+ * three simulated group chats found the same failure under a vocabulary none of
+ * those patterns cover — out, dead, die — because "not" and "out" are edit
+ * words, so a rejection read as a request and pointed the trip at exactly the
+ * month being refused:
+ *
+ *     "so nov out?"                     -> horizon November
+ *     "n cny is feb so feb also dead"   -> horizon February
+ *     "ok so not nov. dec?"             -> horizon November
+ *
+ * The last one is the sharpest: it took the rejected month and discarded the
+ * one actually proposed. Vetoing the whole edit loses that proposal, which is
+ * the safe direction to be wrong in — a month nobody chose is worse than no
+ * change, and someone will say "december" again.
+ */
+const REJECTS_PERIOD = new RegExp(
+  `\\b(?:not|no)\\s+(?:${MONTH_RE})\\b` +
+    `|\\b(?:${MONTH_RE})\\b[^.!?]{0,24}?\\b(?:out|dead|die|died|gone|cancelled|scrapped|cmi|sian|jialat|no good)\\b`,
+  "i",
+);
+
+/**
+ * `states` marks a phrase that is a trip length *by itself*. A bare "weekend"
+ * is not: it is one of the most common words in a chat about dates, and
+ * "1 day is weekend what" — an aside about which days fall on a weekend —
+ * was silently capping the trip at three days. It still resolves a length once
+ * something else has established that the trip's shape is under discussion.
+ */
+const NAMED_DURATIONS: {
+  pattern: RegExp;
+  min: number;
+  max: number;
+  states: boolean;
+}[] = [
+  { pattern: /\blong weekend\b/i, min: 3, max: 4, states: true },
+  { pattern: /\b(?:a |one )?fortnight\b/i, min: 14, max: 14, states: true },
+  { pattern: /\btwo weeks?\b/i, min: 14, max: 14, states: true },
+  { pattern: /\b(?:a|one)\s+week\b/i, min: 7, max: 7, states: true },
+  { pattern: /\bweekend\b/i, min: 2, max: 3, states: false },
 ];
 
 /** Unlike the wizard's parser this searches mid-sentence: "make it 5 days". */
@@ -79,6 +120,13 @@ const NAMED_DURATIONS: { pattern: RegExp; min: number; max: number }[] = [
  * all, and the bare-number fallback would have pinned both ends.
  */
 function findDuration(text: string): DurationEdit | null {
+  // Checked first, not last. It used to guard only the bare-number fallback at
+  // the bottom, so "i can only take 5 days max at one go" matched the ceiling
+  // pattern above it and became a five-day cap on the whole trip. A number of
+  // days that belongs to someone's leave is never the trip's length, whichever
+  // shape it is written in.
+  if (LEAVE_CONTEXT.test(text)) return null;
+
   for (const named of NAMED_DURATIONS) {
     if (named.pattern.test(text)) return { min: named.min, max: named.max };
   }
@@ -119,11 +167,8 @@ function findDuration(text: string): DurationEdit | null {
     if (valid(max)) return { max };
   }
 
-  // A bare number pins both ends, so it must not fire on a leave cap:
-  // "got 5 days leave" is a budget, not a trip length, and reading it as one
-  // would silently rewrite the whole trip.
-  if (LEAVE_CONTEXT.test(text)) return null;
-
+  // A bare number pins both ends. "Got 5 days leave" is a budget, not a trip
+  // length — already refused at the top of this function.
   const single = /\b(\d{1,2})\s*days?\b/i.exec(text);
   if (single) {
     const value = Number(single[1]);
@@ -132,7 +177,14 @@ function findDuration(text: string): DurationEdit | null {
   return null;
 }
 
-const LEAVE_CONTEXT = /\b(?:leave|al|annual leave|days? off|off days?)\b/i;
+/**
+ * Words that mark a number of days as *leave* rather than trip length. The
+ * "take N days" shape carries no leave word at all — "i can only take 5 days
+ * max at one go" — and was being read as a request to cap the trip at five
+ * days for everyone.
+ */
+const LEAVE_CONTEXT =
+  /\b(?:leave|al|annual leave|days? off|off days?)\b|\b(?:only|just)\s+take\s+\d{1,2}\s*days?\b/i;
 
 /**
  * Whether the text *states* a trip length, as opposed to mentioning a number
@@ -142,7 +194,8 @@ const LEAVE_CONTEXT = /\b(?:leave|al|annual leave|days? off|off days?)\b/i;
  */
 function statesDuration(text: string): boolean {
   if (LEAVE_CONTEXT.test(text)) return false;
-  if (NAMED_DURATIONS.some((named) => named.pattern.test(text))) return true;
+  if (NAMED_DURATIONS.some((named) => named.states && named.pattern.test(text)))
+    return true;
   if (/\b\d{1,2}\s*(?:-|–|—|to)\s*\d{1,2}\s*days?\b/i.test(text)) return true;
   return /\b(?:at least|minimum|min|at most|maximum|max|no more than|no less than|no longer than|no shorter than|up to|or more|or less|or longer|or shorter)\b/i.test(
     text,
@@ -170,11 +223,25 @@ export function parseTripEdit(
   // many dates it names. ABOUT_THEMSELVES caught only pronoun-adjacent phrasing;
   // this catches the obligations people actually describe.
   if (ABOUT_THEMSELVES.test(text) || statesPersonalConstraint(text)) return null;
+  // Dates belonging to someone who is not on the trip are not the trip's dates.
+  if (statesThirdPartyConstraint(text)) return null;
+  // Someone withdrawing what they said is not proposing anything. The caller
+  // already checks reversals first, so this is belt and braces — but every
+  // recurrence of this bug has come from a message reaching this parser by a
+  // route nobody expected.
+  if (parseReversal(text)) return null;
   // Only *sceptical* questions are vetoed, not every question. "December can?"
   // and "taiwan can anot" are how a proposal is phrased here — the question is
   // the suggestion. "Meh" is different: it challenges the premise rather than
   // offering one, so it proposes nothing to apply.
   if (/\b(?:meh|izzit|is ?it)\s*\??\s*$/i.test(text)) return null;
+  // A month named to refuse it is not a request for it.
+  if (REJECTS_PERIOD.test(text)) return null;
+  // A hypothetical describes a scenario rather than asking for one: "if korea
+  // in feb its snow season also" is an argument against February, and was
+  // moving the trip there. Only a leading "if" — "we go feb if flight cheap"
+  // is a real proposal with a condition attached.
+  if (/^\s*if\b/i.test(text)) return null;
 
   // Dates get proposed exactly the way destinations do — "how about December",
   // "December can?", "year end works", "why not next June" — so the same

@@ -11,6 +11,33 @@ import { findFuzzyPeriod, findRelativePeriod } from "./periods.js";
  * parsers is what made the bot reject "next year" in the wizard while
  * accepting it as a command argument.
  */
+/**
+ * "After the 13th" names a floor, not a day.
+ *
+ * A single date resolves to a one-day range, which is right for "on the 13th"
+ * and nonsense for "so after 13 march can lor" — that produced a horizon of
+ * 2027-03-13 to 2027-03-13, a trip window one day wide that no group could
+ * ever fit inside.
+ *
+ * The end runs to the end of the month named, which is the smallest reading
+ * that is not simply wrong: it keeps the month the speaker actually said and
+ * invents no others. A closed range ("from 13 to 20 march") is left alone.
+ * Recorded in docs/DECISIONS.md, 2026-08-21.
+ */
+const OPEN_ENDED_FLOOR = /\b(?:after|onwards?|from)\b/i;
+const CLOSED_RANGE = /\b(?:to|till|until|through|[–—-])\b|\d\s*[–—-]\s*\d/i;
+
+function openEndedFrom(range: DateRange, text: string): DateRange {
+  if (range.start !== range.end) return range;
+  if (!OPEN_ENDED_FLOOR.test(text) || CLOSED_RANGE.test(text)) return range;
+  const [year, month] = range.start.split("-").map(Number) as [number, number];
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return {
+    start: range.start,
+    end: `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
 export function resolveHorizon(
   input: string,
   today: ISODate,
@@ -31,7 +58,7 @@ export function resolveHorizon(
 
   // Months are the most specific signal, so they win when present.
   const months = findMonthRange(text, today, yearHint);
-  if (months) return months.range;
+  if (months) return openEndedFrom(months.range, text);
 
   const fuzzy = findFuzzyPeriod(text, today);
   if (fuzzy) return fuzzy.range;

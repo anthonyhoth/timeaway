@@ -117,6 +117,13 @@ export function parseTripRequest(args: string, today: ISODate): TripRequest {
     }
   }
 
+  // A full stop ends a candidate as surely as a comma does. Sentence
+  // punctuation was stripped a few lines below without leaving a separator
+  // behind, so "taiwan / da nang / korea. pick one" merged the last option into
+  // the next sentence as "Korea Pick" — which then failed place-vetting and
+  // vanished, silently dropping one of the three options being voted on.
+  remaining = remaining.replace(/([\p{L}\d])\s*[.;!?]+(\s|$)/gu, "$1,$2");
+
   // Whatever survives is the destination.
   const rawTokens = remaining.split(/\s+/).filter((t) => t.trim().length > 0);
 

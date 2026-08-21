@@ -2058,3 +2058,87 @@ Clearing the five items left open after the trial-readiness pass.
 ## Open / accepted risk: budget/affordability may be a bigger blocker than date-finding
 
 **Status: accepted, not addressed by design.** Across three independent research threads (general group-travel commentary and two separate Singapore-specific threads, spanning both the working-professional and student demographics), the cost of the trip came up as a bigger source of group friction than finding dates. Timeaway does not address this — deliberately, per section 19's scope. This is a known limitation of the product's chosen scope, not a bug to fix. Worth keeping in mind when writing marketing copy: Timeaway solves one real part of group trip friction, not the whole thing, and claiming otherwise would overpromise.
+
+---
+
+## Decision (2026-08-21): eight ambient-parsing defects found by replaying simulated group chats
+
+Three synthetic Singaporean group chats — 2, 3 and 6 friends, 343 messages,
+written to mirror how people in the target band actually type, off-topic drift
+included — were replayed through the ambient pipeline in `bot.ts`'s own branch
+order. Every defect below was reproduced directly against the parsers and is
+now covered by `group-chat-replay.test.ts`, a sibling to `simulation.test.ts`
+rather than an extension of it, because that file records a different corpus.
+
+The shape of all eight was the same: **a message about a person acted on as an
+instruction about the trip.**
+
+**The continuation merger accepted any message of eight words or fewer.**
+`looksLikeContinuation` was a bare word count; the `CONTINUATION_MARKER` regex
+directly above it — which its own comment called the thing that makes a
+fragment safe to attach — was never consulted, and `hasContinuationMarker` was
+exported and unit-tested with no production caller. Since `tryContinuation`
+deletes the previous declarations before writing the merged reading, every
+short message a speaker sent rewrote their last dated statement. "Nov for me
+can" plus "eh ya ur bto! how" inverted a month to UNAVAILABLE; a reservist block
+plus "ya feb is aunties n pineapple tarts" became a full year. A fragment now
+has to open with a connective *and* say something about time, or be a bare
+period. Hedges ("i think") count as filler, not content — the first version of
+this fix was too tight and lost a real narrowing, which is why that case is
+pinned by its own test.
+
+**A month named to reject it was read as a request for it.** `simulation.test.ts`
+already guarded "nov too rainy"; the replay found the same failure under *out*,
+*dead*, *die* and *not*, none of which those patterns cover. "Ok so not nov.
+dec?" was the sharpest — it took the rejected month and discarded the proposed
+one. Rejections now veto the whole edit, losing the proposal, which is the safe
+direction to be wrong in. Leading conditionals ("if korea in feb its snow
+season also") are vetoed for the same reason: a hypothetical describes a
+scenario rather than asking for one.
+
+**Ownership was not enforced outside the availability path.** The availability
+parser already refuses third-party relays because identity resolution does not
+exist yet — but `parseTripEdit` had no equivalent guard, so "sheryl says she can
+only do school hols" routed around the refusal and became the group's search
+window. A personal leave cap had the same problem in the other direction:
+"i can only take 5 days max at one go" became the *trip's* duration for all six
+travellers, because `findDuration` checked its leave-context guard last, after
+the ceiling pattern had already matched. That guard now runs first, and the
+phrasing is recognised as a leave cap, so it lands on the participant as
+`maxLeaveDays` — captured rather than merely refused.
+
+**Retractions only worked in their bare form.** "Scratch that" was handled;
+"scratch my march thing" was not, so a message correcting one's own ICT dates
+fell through to trip-edit and pointed the whole trip at March.
+
+**The notes parser was greedy, and inverted one reading.** Bare "again" made
+"i dun mind going again actually, bali damn relaxing" an *objection* to Bali.
+"Broke" matched "they broke up in may". A bare "30k" matched a marathon
+distance and a renovation quote. "Cheap" and "price" now need the speaker to be
+talking about themselves; the strong vocabulary still needs nothing.
+
+**Two destination bugs.** All-caps was being read as a deliberate capital, so
+"to the CENT??" — someone appalled that a date split the bill exactly — created
+a destination called CENT. And sentence punctuation was stripped without
+leaving a separator, so "taiwan / da nang / korea. pick one" merged the last
+option into the next sentence as "Korea Pick", failed vetting, and silently
+dropped the group's third option. Commas now survive `stripProposalLanguage`
+for the same reason "or" already did: the name extractor splits on them.
+
+**Open-ended lower bounds resolved to a single day.** "So after 13 march can
+lor" produced a horizon of 13–13 March, a trip window one day wide. It now runs
+to the end of the month named — *the smallest reading that is not simply
+wrong*, keeping the month the speaker said and inventing no others. This is the
+one judgement call in the set rather than an outright bug fix, recorded here
+per AGENTS.md.
+
+**The cost consequence is real and was accepted.** Messages the grammar used to
+claim wrongly now fall through, so LLM escalation on this corpus rose from 26%
+to 41%. A wrong answer that silently reshapes a trip is worse than a costly one,
+and the per-trip daily cap already bounds the spend — but the six-person chat
+would now reach that cap sooner, and if it bites often the answer is to teach
+the grammar these shapes, not to loosen the vetoes back.
+
+`packages/constraint-parsing/src/harness.ts` and `src/scripts/` replay a corpus
+of chat messages through the pipeline and print what each one produced; that is
+how these were found, and how the next set should be.

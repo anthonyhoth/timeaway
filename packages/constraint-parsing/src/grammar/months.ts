@@ -16,7 +16,12 @@ const MONTHS = [
   "december",
 ] as const;
 
-const MONTH_RE =
+/**
+ * Exported so other grammar modules match months against this list rather than
+ * keeping their own copy. Two lists that are supposed to agree and silently
+ * don't is the failure this package keeps rediscovering — see prefilter.ts.
+ */
+export const MONTH_RE =
   "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
 
 // A bare space also separates months ("June July 2028") — people write it,

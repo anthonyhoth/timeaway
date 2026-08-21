@@ -1,4 +1,6 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["src/**/*.test.ts"]
+  // Scripts are developer tooling run through tsx, not part of the published
+  // package — they use node globals the library build deliberately does not.
+  "exclude": ["src/**/*.test.ts", "src/scripts/**"]
 }

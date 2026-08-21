@@ -194,6 +194,11 @@ function findLeaveCap(text: string): number | null {
     // required, not optional — "Al" is also a name, and a bare "Al 5" should
     // not silently become a five-day leave cap.
     /\b(?:al|annual leave)\s*(?:balance|left|remaining|only|is|:)\s*(\d{1,2})\b/i,
+    // A ceiling stated without the word "leave" anywhere — "i can only take 5
+    // days max at one go". This is how a cap usually reaches the chat, and
+    // matching nothing here meant it fell through to parseTripEdit, which read
+    // it as the *trip's* length and capped it for all six travellers.
+    /\b(?:can|able to)?\s*(?:only|just)\s+take\s+(\d{1,2})\s*days?\b/i,
   ];
   for (const pattern of patterns) {
     const match = pattern.exec(text);
@@ -328,6 +333,29 @@ export function statesPersonalConstraint(rawText: string): boolean {
     OBLIGATION.test(text) ||
     OBJECTION.test(text)
   );
+}
+
+/**
+ * Someone relaying a *third party's* constraint.
+ *
+ * The extraction pipeline already refuses these on the availability side —
+ * `subjectName` is set and the caller returns without storing, because
+ * resolving identity is not something we do yet. parseTripEdit had no
+ * equivalent guard, so the same sentence routed around the refusal and became
+ * the group's search window:
+ *
+ *   "sheryl says she can only do school hols" → horizon 15 Nov – 31 Dec
+ *
+ * Sheryl is not on the trip. Used as a veto for the same reason as
+ * `statesPersonalConstraint`: whoever the dates belong to, they are not the
+ * plan.
+ */
+const THIRD_PARTY =
+  /\b(?:asked if|says? (?:he|she|they)|said (?:he|she|they))\b|\b(?:he|she|they)\s+(?:can(?:'?t|not)?|only|says?|said|wants?|needs?|prefers?|will|would|might)\b/i;
+
+/** Whether the dates in this message belong to someone who is not speaking. */
+export function statesThirdPartyConstraint(rawText: string): boolean {
+  return THIRD_PARTY.test(stripParticles(rawText));
 }
 
 /**
