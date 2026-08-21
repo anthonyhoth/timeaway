@@ -1,0 +1,7 @@
+# Corepack's pnpm shim crashes on Railway's build image with
+# ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING when running pnpm@11.8.0 (reproduced
+# on both Node 22.19.0 and 24.10.0, so it's a Corepack issue, not a Node
+# version issue). Installing pnpm globally via npm bypasses Corepack's vm
+# sandbox entirely.
+[phases.install]
+cmds = ["npm install -g pnpm@11.8.0", "pnpm install --frozen-lockfile"]
