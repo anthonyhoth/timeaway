@@ -31,8 +31,45 @@ const OPAQUE_REFERENT =
 const PERSONAL_EVENT =
   /\b(?:company (?:closure|shutdown|leave)|office (?:closure|shutdown)|block leave|forced leave|shut ?down period|clearance leave|notice period)\b/i;
 
+/**
+ * A period that recurs several times a year, named without saying which one.
+ *
+ * "The school holidays" are public, which is why they were treated as
+ * resolvable — but a teacher has four of them, and picking the year-end one
+ * while ruling out the rest of the horizon is not a partial answer. It is a
+ * wrong one, and it silently deletes the March and June windows she goes on to
+ * name. Naming the instance ("the june school holidays") makes it resolvable
+ * again.
+ */
+const RECURRING_PERIOD =
+  /\b(?:school\s*hol\w*|term\s*break|semester\s*break|term\s*time|hols?)\b/i;
+
+/**
+ * Naming the instance rescues it: "school holidays in dec" is a period anyone
+ * can look up, and the codebase already treats it as public. It is the bare
+ * form that cannot be resolved — a teacher has four a year, and picking the
+ * year-end one while ruling out the rest of the horizon deletes the March and
+ * June windows she goes on to name.
+ */
+/**
+ * Only the instance we actually hold. The period table has a single
+ * school-holiday window — the year-end one — so naming December resolves and
+ * naming anything else does not: "cmi during the march school hols" was being
+ * recorded as 15 Nov – 31 Dec, the March holidays filed as the year-end ones.
+ * Two stated readings that disagree are not resolved here by preferring one.
+ */
+const NAMES_INSTANCE = /\b(?:dec(?:ember)?|year[- ]?end)\b/i;
+
+export function namesRecurringPeriod(text: string): boolean {
+  return RECURRING_PERIOD.test(text) && !NAMES_INSTANCE.test(text);
+}
+
 export function namesOpaquePeriod(text: string): boolean {
-  return OPAQUE_REFERENT.test(text) || PERSONAL_EVENT.test(text);
+  return (
+    OPAQUE_REFERENT.test(text) ||
+    PERSONAL_EVENT.test(text) ||
+    namesRecurringPeriod(text)
+  );
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   namesLikelyPlace,
   readProposal,
   stripProposalLanguage,
+  ASSENT_FRAME,
 } from "./proposals.js";
 import { parseTripRequest } from "./trip-request.js";
 
@@ -31,8 +32,14 @@ export interface DestinationEdit {
 
 export const ADD_WORDS =
   /\b(?:also|too|as well|add|another|what about|how about|consider|include)\b/i;
+/**
+ * "Actually" only replaces when it introduces the change. Trailing, it is a
+ * discourse particle softening an opinion — "chiang mai in dec is damn nice
+ * actually" was rewriting the entire shortlist to Chiang Mai, when the safest
+ * reading of a suggestion is that it joins the list.
+ */
 export const REPLACE_WORDS =
-  /\b(?:instead|rather than|change (?:it )?to|switch to|actually)\b/i;
+  /\b(?:instead|rather than|change (?:it )?to|switch to)\b|\bactually\b(?![^.!?]*$)|^\s*actually\b/i;
 /**
  * Taking a place off the list.
  *
@@ -52,7 +59,10 @@ export const REMOVE_WORDS =
 function detectOp(text: string): DestinationEditOp | null {
   // Replace is checked first: "actually let's do Korea instead" carries both
   // an add-ish and a replace-ish word, and replace is the stronger claim.
-  if (REPLACE_WORDS.test(text)) return "REPLACE";
+  // Assent joins the list; it never clears it. "Actually" is a replace word,
+  // so "okinawa idm actually" was rewriting the whole shortlist to Okinawa —
+  // agreeing to a place deleted every other candidate.
+  if (REPLACE_WORDS.test(text) && !ASSENT_FRAME.test(text)) return "REPLACE";
 
   // Removal outranks addition, because the add vocabulary is weak words that
   // turn up everywhere. "Remove bangkok also" was read as an *addition* — the

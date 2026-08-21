@@ -2328,3 +2328,66 @@ but where") bringing that class to five distinct causes; a calendar written as a
 list ("mar: no. apr: yes. may: maybe") is read as nothing; recurring periods
 capture only their first instance; and loose relative words still resolve to a
 single day near today.
+
+---
+
+## Decision (2026-08-21): the rest of the third sweep, minus register
+
+Register is **out of scope by founder decision**: the target user is
+Telegram-native and 23–29, and does not write in paragraphs. The 33% flag rate
+on formal English stands as a recorded observation, not a backlog item.
+
+The six remaining findings are fixed.
+
+**Every window in a list is recorded.** `parseMultiSpan` was reading both
+windows correctly and never being reached: the year hint comes from the trip
+horizon, so a horizon opening in October makes "june" mean June 2026, which has
+gone. Every segment failed, the whole list declined, and the caller's
+single-reference path silently kept the first window. It now falls back to the
+matchers' own roll-forward.
+
+**A month-by-month calendar is read.** "Mar: no. apr: yes. may: maybe. jun: no"
+recorded nothing — the densest availability message in three sweeps, and the
+only naturally occurring MAYBE, which is the state the five-value model exists
+for. `parseMonthCalendar` handles the shape; the colon is what makes it safe,
+since "shortlist: seoul, taipei" has one but no month in front of it.
+
+**Agreeing to a place no longer deletes the others.** "Actually" is a replace
+word, so "okinawa idm actually" rewrote the whole shortlist. It now only
+replaces when it *introduces* the change — trailing, it is a discourse particle
+softening an opinion, and the safest reading of a suggestion is that it joins
+the list.
+
+**Two more nonsense destinations, and a cause rather than a patch.** "Least"
+from "at least", "But Where" from "ok im in but where" — the fourth and fifth of
+that class, and both from the locative rule accepting a *function word* after a
+real preposition. No gazetteer can fix that, because the problem is the word
+being a function word rather than an unknown noun. A small stopword list now
+sits in front of the locative check.
+
+**A recurring period is asked about rather than guessed.** The period table
+holds exactly one school-holiday window, the year-end one. "I can only move
+during school hol" was resolving to it and ruling out the rest of the horizon —
+deleting the March and June windows the teacher went on to name. Worse, "cmi
+during the march school hols" recorded 15 Nov – 31 Dec: the March holidays filed
+as the year-end ones. Naming December still resolves, because that is the
+instance we actually hold; anything else asks.
+
+**Two attempts were reverted for contradicting existing decisions**, which is
+the value of the older tests:
+
+- Preferring an explicit month over a resolved period label broke *"keeps the
+  stated scope when the two conflict rather than nest"* — the codebase already
+  decides that two readings which disagree are not settled by picking one.
+  Narrowing what counts as a resolvable instance achieves the same end without
+  inventing a resolution.
+- Treating every "school holidays" as opaque broke *"does not treat a public
+  period as opaque"*. Public periods stay public; only the ones we cannot place
+  are asked about.
+
+**Still open:** a message listing several recurring periods at once ("mar hol
+13-21 mar, jun hol whole of june, sep hol 4/9-12/9") escalates rather than
+recording all three — each entry carries its own label and its own dates, which
+is a third list shape after multi-span and the month calendar. Loose relative
+words still resolve to a single day near today. And leave arithmetic said aloud
+still reads as a trip length.

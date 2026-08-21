@@ -101,9 +101,11 @@ describe("'only' restricts the thing it governs", () => {
   });
 
   it("still restricts when it governs a date", () => {
-    expect(dates("i can only join during school holidays")).toEqual([
+    // A bare "school holidays" now asks instead — see sweep3.test.ts. Naming
+    // the instance keeps it resolvable.
+    expect(dates("i can only do school holidays in dec")).toEqual([
       { state: "UNAVAILABLE", start: "2026-10-01", end: "2027-06-30" },
-      { state: "AVAILABLE", start: "2026-11-15", end: "2026-12-31" },
+      { state: "AVAILABLE", start: "2026-12-01", end: "2026-12-31" },
     ]);
     expect(dates("i can only do 23-28 feb")).toEqual([
       { state: "UNAVAILABLE", start: "2026-10-01", end: "2027-06-30" },

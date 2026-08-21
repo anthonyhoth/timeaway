@@ -5,8 +5,8 @@ import { MONTH_RE, findMonthRange } from "./months.js";
 import type { FoundPeriod } from "./periods.js";
 import { findFuzzyPeriod, findRelativePeriod } from "./periods.js";
 import { findChronoPeriod } from "./chrono.js";
-import { parseMultiSpan } from "./multi-span.js";
-import { namesOpaquePeriod } from "./opaque.js";
+import { parseMonthCalendar, parseMultiSpan } from "./multi-span.js";
+import { namesOpaquePeriod, namesRecurringPeriod } from "./opaque.js";
 import { namesKnownDestination } from "./proposals.js";
 import { namesLengthWithinPeriod } from "./span-shape.js";
 import {
@@ -292,17 +292,17 @@ function resolveBySpecificity(text: string, today: string): FoundPeriod | null {
       ? scope.range
       : undefined;
 
-  const narrower =
-    // Ahead of the whole-month matcher: "first 3 weeks of Jan" must narrow to
-    // those days, not widen to all of January.
-    //
-    // Unless the speaker already gave both ends. "Mid yr exam 10-21 may" is a
-    // range with a qualifier belonging to a different noun, and applying it
-    // trimmed a day off each side of dates that were stated exactly.
-    (namesClosedRange(text)
-      ? null
-      : findSubPeriod(text, today, yearHint, within)) ??
-    findMonthRange(text, today, yearHint);
+  const sub = namesClosedRange(text)
+    ? null
+    : // Ahead of the whole-month matcher: "first 3 weeks of Jan" must narrow to
+      // those days, not widen to all of January.
+      //
+      // Unless the speaker already gave both ends. "Mid yr exam 10-21 may" is a
+      // range with a qualifier belonging to a different noun, and applying it
+      // trimmed a day off each side of dates that were stated exactly.
+      findSubPeriod(text, today, yearHint, within);
+  const byMonth = findMonthRange(text, today, yearHint);
+  const narrower = sub ?? byMonth;
 
   if (!scope) {
     // Last stop before the LLM, and only when nothing else read the message.
@@ -451,6 +451,29 @@ export function parseAvailabilityMessage(
   // ("dec cannot", "feb cmi") are deliberately not rejections — they are
   // declarations, and NEGATIVE below still reads them as UNAVAILABLE.
   if (rejectsNamedPeriod(text)) return null;
+
+  // A period that happens several times a year, named without saying which:
+  // "i can only move during school hol". Resolving it to one instance and
+  // ruling out the rest of the horizon is a wrong answer, not a partial one.
+  // Declining routes it to the opaque-period path, which asks.
+  if (namesRecurringPeriod(text)) return null;
+
+  // A month-by-month calendar carries a state per entry, so it cannot go
+  // through the single-state path below. Checked early: the month matcher would
+  // otherwise claim the first entry and the rest would be lost.
+  const calendar = parseMonthCalendar(text, ctx.today, yearHintFor(ctx));
+  if (calendar) {
+    return {
+      relevant: true,
+      subjectName: null,
+      declarations: calendar.map((entry) => ({
+        state: entry.state,
+        start: entry.range.start,
+        end: entry.range.end,
+      })),
+      maxLeaveDays: findLeaveCap(text),
+    };
+  }
 
   const leaveCap = findLeaveCap(text);
   const dateRef = findDateReference(

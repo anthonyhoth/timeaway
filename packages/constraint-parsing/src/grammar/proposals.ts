@@ -139,6 +139,14 @@ const KNOWN_DESTINATION_RE = new RegExp(
   "i",
 );
 
+/**
+ * Words that can stand immediately after a preposition without being a place.
+ * Deliberately small: it only has to cover what the locative rule would
+ * otherwise wave through.
+ */
+const FUNCTION_WORD =
+  /^(?:least|most|but|and|or|so|then|now|here|there|home|work|time|times|first|last|next|it|this|that|what|where|when|who|why|how|all|some|any|one|two|none|again|only|just|else|more|less|us|them|me|you|him|her)$/i;
+
 /** Whether the message names a place we already recognise. */
 export function namesKnownDestination(text: string): boolean {
   return KNOWN_DESTINATION_RE.test(text);
@@ -167,6 +175,12 @@ export function namesLikelyPlace(
   // "i want to cry" was adding a destination called Cry. It counts only after a
   // verb of travel, which is the reading that made the rule worth having. The
   // genuinely locational prepositions still stand on their own.
+  // "At least", "im in but where" — the preposition is real and the word after
+  // it is not a place. Two of the five nonsense destinations found so far came
+  // from exactly this, and no list of place names can catch them because the
+  // problem is the word being a function word, not an unknown noun.
+  if (FUNCTION_WORD.test(name.split(" ")[0]!)) return false;
+
   const head = escape(name.split(" ")[0]!);
   const TRAVEL =
     String.raw`go(?:ing|es)?|went|fly(?:ing)?|flew|travel(?:l?ing)?|head(?:ing|ed)?|visit(?:ing|ed)?|off|back|trip|flight`;
