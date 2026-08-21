@@ -22,6 +22,7 @@
  * continuation, and an hour later is a new thought.
  */
 
+import type { ExtractedDeclaration } from "../types.js";
 import { MONTH_RE } from "./months.js";
 
 /**
@@ -125,4 +126,29 @@ export function joinUtterances(previous: string, next: string): string {
 /** Whether the follow-up opens with an explicit continuation word. */
 export function hasContinuationMarker(text: string): boolean {
   return CONTINUATION_MARKER.test(text.trim());
+}
+
+/**
+ * Did joining actually change the reading?
+ *
+ * `tryContinuation` deletes the previous declarations and rewrites them from the
+ * joined text. When the join reproduces exactly what was already recorded, the
+ * fragment contributed nothing — it was not understood — and absorbing it
+ * discards whatever it did say. "ICT 9-20 mar" followed by "12-19 can" rewrote
+ * 9–20 March with itself and lost the window being offered; a smell for this
+ * found eight of them across four corpora, three in chats that had already been
+ * through three rounds of fixes.
+ *
+ * A fragment that changes nothing should fall through to the LLM, which is what
+ * happens to every other message the grammar cannot read.
+ */
+export function sameReading(
+  before: readonly ExtractedDeclaration[],
+  after: readonly ExtractedDeclaration[],
+): boolean {
+  if (before.length !== after.length) return false;
+  return before.every((d, i) => {
+    const other = after[i]!;
+    return d.state === other.state && d.start === other.start && d.end === other.end;
+  });
 }

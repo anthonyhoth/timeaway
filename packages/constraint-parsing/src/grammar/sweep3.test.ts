@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAvailabilityMessage } from "./availability.js";
 import { parseDestinationEdit } from "./destination.js";
-import { parseMultiSpan } from "./multi-span.js";
+import { parseSpanList } from "./multi-span.js";
 import { namesOpaquePeriod } from "./opaque.js";
 import { namesLikelyPlace } from "./proposals.js";
 
@@ -20,7 +20,7 @@ const dates = (text: string) => parseAvailabilityMessage(text, ctx)?.declaration
  */
 describe("every window in a list is recorded", () => {
   /**
-   * parseMultiSpan reads both windows correctly. It was never reached: the year
+   * parseSpanList reads both windows correctly. It was never reached: the year
    * hint comes from the trip horizon, and a horizon opening in October makes
    * "june" mean June 2026, which has gone. Every segment failed to resolve, the
    * whole list declined, and the single-reference path silently kept the first.
@@ -33,7 +33,9 @@ describe("every window in a list is recorded", () => {
   });
 
   it("resolves a list the year hint would put in the past", () => {
-    expect(parseMultiSpan("1-13 june or 24-30 june", today, 2026)).toEqual([
+    expect(
+      parseSpanList("1-13 june or 24-30 june", today, 2026)?.map((e) => e.range),
+    ).toEqual([
       { start: "2027-06-01", end: "2027-06-13" },
       { start: "2027-06-24", end: "2027-06-30" },
     ]);

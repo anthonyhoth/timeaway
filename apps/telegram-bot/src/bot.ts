@@ -9,6 +9,7 @@ import {
   parseParticipantNote,
   joinUtterances,
   looksLikeContinuation,
+  sameReading,
   namesOpaquePeriod,
   opaqueReferentLabel,
   parseDestinationObjection,
@@ -1662,6 +1663,17 @@ export function createBot(token: string, deps: BotDeps): Bot {
     const joined = joinUtterances(previous.text, text);
     const combined = parseAvailabilityMessage(joined, extractionCtx);
     if (!combined || combined.declarations.length === 0) return false;
+
+    // A join that reproduces the previous reading has understood nothing from
+    // the fragment — and the rewrite below deletes those declarations, so
+    // absorbing it discards whatever the fragment did say. "ICT 9-20 mar"
+    // followed by "12-19 can" rewrote 9–20 March with itself and lost the
+    // window being offered. Fall through to the LLM instead, as every other
+    // unreadable message does.
+    const before = parseAvailabilityMessage(previous.text, extractionCtx);
+    if (before && sameReading(before.declarations, combined.declarations)) {
+      return false;
+    }
 
     // The qualified reading replaces the unqualified one rather than joining
     // it: "december" and "the first half of december" are the same statement

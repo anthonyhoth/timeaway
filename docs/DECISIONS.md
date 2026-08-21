@@ -2391,3 +2391,81 @@ recording all three — each entry carries its own label and its own dates, whic
 is a third list shape after multi-span and the month calendar. Loose relative
 words still resolve to a single day near today. And leave arithmetic said aloud
 still reads as a trip length.
+
+---
+
+## Decision (2026-08-21): a list can hold more than one answer
+
+The fourth replay found `parseMultiSpan` resolving each segment's dates
+separately and then stamping **one state across all of them**. Right for the
+list it was written for — "free in oct last 2 weeks, nov 1st week and dec 3rd
+week", where one direction governs everything — and wrong the moment the answers
+differ:
+
+    "nov cannot, dec can"  ->  UNAVAILABLE Nov, UNAVAILABLE Dec
+
+December was offered and came back refused. The colon form had read per-entry
+states since the third sweep, so the same sentence written with a colon was
+correct and written with a comma was half inverted.
+
+**There is now one list reader.** `parseSpanList` does segmentation and date
+resolution and returns each segment's own direction where it stated one;
+`parseSelfStatingList` is the same reader under a stricter policy — every
+segment must answer for itself — which is what the caller needs *before* it has
+settled a direction for the message. The colon-matching `parseMonthCalendar` is
+gone. Keeping two implementations of one shape is the mistake this package has
+made four times (see prefilter.ts, stance.ts, date-shape.ts), and it had already
+started: the calendar's answer vocabulary and multi-span's were separate lists
+that were supposed to agree.
+
+Four rules make per-segment direction safe, and every one of them came from a
+wrong answer found while building it:
+
+- **A label governs the items under it.** "Free: 1-8 apr, 20-30 apr / busy: 9-19
+  apr" puts a bare window between two labelled ones. Reading it against the
+  message as a whole — which says "busy" — blocked out a window the speaker had
+  offered. A bare segment now takes the last direction *stated*, not the
+  message's. This message previously produced three wrong claims; it now reads
+  correctly.
+- **The injected reader must be the caller's full one.** Passing bare
+  `messageIntent` into the list reader lost the hedge, turning "should be can
+  nov and dec" from two MAYBEs into a firm yes the group could plan around.
+  `segmentDirection` adds the hedge back.
+- **Overlapping ranges are a restatement, not a list.** Splitting on sentences
+  made "may cannot leh. mid yr exam 10-21 may" look like two entries and
+  recorded the whole of May beside a fortnight of it. A list enumerates
+  alternatives; a range inside another means the speaker was refining one
+  period, so the reader hands it back to the single-reference path.
+- **A segment that restricts itself cannot inherit.** "Jan: after the 15th only"
+  would take the "cannot" from the sentences before it and block all of January,
+  when the second half was being offered. The list declines instead — consistent
+  with "half a list is not safer than none".
+
+Segmentation also gained sentence boundaries, without which "mar cmi, … apr can.
+may can" was two segments and May was lost. `/` and `+` split only with
+whitespace on a side and a full stop only at a sentence boundary, so "12/12" and
+"1.5k" survive intact.
+
+**A no-op continuation now falls through instead of being absorbed.** This was
+already an open finding, and the change above widened it by two messages, so it
+is fixed here rather than left worse than it started. `tryContinuation` deletes
+the previous declarations and rewrites them from the joined text; when the join
+reproduces what was already recorded, the fragment was not understood and
+absorbing it discards whatever it said. "ICT 9-20 mar" followed by "12-19 can"
+rewrote 9–20 March with itself and lost the window being offered — and in one
+chat this swallowed the group's *final agreed dates*. `sameReading` in
+continuation.ts decides it, and the harness mirrors the bot so triage does not
+lie about what the bot does. Eight instances across four corpora are gone; the
+fragments now escalate, which is what happens to every other message the
+grammar cannot read.
+
+Triage flags: 10→7, 10→9, 37→36 and 14→10 across the four corpora. One of the
+survivors was a false positive in the tool itself — it compared spans without
+states, so a join that flipped 17 Feb from UNAVAILABLE to AVAILABLE looked like
+a no-op. It now compares exactly what `sameReading` does.
+
+**Newly open:** "ok 1-1.2" qualifies as a bare-period fragment — the "1" reads
+as a date — and merging it flipped a February date to AVAILABLE. A budget figure
+should not be continuation material. Also still open from the fourth sweep: a
+numbered list of *group options* read as one person's refusal, a bare day range
+landing on today, and the calendar entries that resolve into the past.

@@ -147,7 +147,7 @@ function smellsOf(v: Verdict): Smell[] {
     // nothing — and tryContinuation deletes and rewrites the declarations, so
     // whatever the fragment did say is silently discarded. "12-19 can" after
     // "ICT 9-20 mar" was swallowed whole this way.
-    const joinedSpans = (d.match(/"start":"[\d-]+","end":"[\d-]+"/g) ?? []).join("|");
+    const joinedSpans = (d.match(/"state":"\w+","start":"[\d-]+","end":"[\d-]+"/g) ?? []).join("|");
     if (prevSpans.has(v.speaker) && prevSpans.get(v.speaker) === joinedSpans)
       out.push({ code: "CONT-NO-OP", why: `"${v.text}" changed nothing and was absorbed` });
 
@@ -163,7 +163,10 @@ function smellsOf(v: Verdict): Smell[] {
   }
 
   if (v.outcome === "AVAILABILITY" || v.outcome === "CONTINUATION") {
-    prevSpans.set(v.speaker, (d.match(/"start":"[\d-]+","end":"[\d-]+"/g) ?? []).join("|"));
+    prevSpans.set(
+      v.speaker,
+      (d.match(/"state":"\w+","start":"[\d-]+","end":"[\d-]+"/g) ?? []).join("|"),
+    );
   }
   return out;
 }

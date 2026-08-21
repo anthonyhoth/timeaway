@@ -5,7 +5,7 @@ import { MONTH_RE, findMonthRange } from "./months.js";
 import type { FoundPeriod } from "./periods.js";
 import { findFuzzyPeriod, findRelativePeriod } from "./periods.js";
 import { findChronoPeriod } from "./chrono.js";
-import { parseMonthCalendar, parseMultiSpan } from "./multi-span.js";
+import { parseSelfStatingList, parseSpanList } from "./multi-span.js";
 import { namesOpaquePeriod, namesRecurringPeriod } from "./opaque.js";
 import { namesKnownDestination } from "./proposals.js";
 import { namesLengthWithinPeriod } from "./span-shape.js";
@@ -429,6 +429,19 @@ export function messageIntent(
 /**
  * Parse one chat message. Null means "not confident — escalate to the LLM".
  */
+/**
+ * The direction of one fragment, as the list reader needs it.
+ *
+ * `messageIntent` alone loses the hedge: "should be can" is POSITIVE to it,
+ * where the message-level reading downgrades that to MAYBE. Passing the bare
+ * intent into the list reader would turn every hedged list into a firm yes the
+ * group could plan around.
+ */
+function segmentDirection(text: string): DeclaredAvailabilityState | null {
+  const intent = messageIntent(text);
+  return intent === "AVAILABLE" && HEDGED_POSITIVE.test(text) ? "MAYBE" : intent;
+}
+
 export function parseAvailabilityMessage(
   rawText: string,
   ctx: ExtractionContext,
@@ -461,7 +474,12 @@ export function parseAvailabilityMessage(
   // A month-by-month calendar carries a state per entry, so it cannot go
   // through the single-state path below. Checked early: the month matcher would
   // otherwise claim the first entry and the rest would be lost.
-  const calendar = parseMonthCalendar(text, ctx.today, yearHintFor(ctx));
+  const calendar = parseSelfStatingList(
+    text,
+    ctx.today,
+    yearHintFor(ctx),
+    segmentDirection,
+  );
   if (calendar) {
     return {
       relevant: true,
@@ -570,17 +588,20 @@ export function parseAvailabilityMessage(
   // it had not. Restrictions and roster-pending stay on the single-reference
   // path below, which knows how to complement and how to hedge.
   if (!RESTRICTIVE.test(text) && !isUnknown) {
-    const spans = parseMultiSpan(text, ctx.today, yearHintFor(ctx));
+    const spans = parseSpanList(text, ctx.today, yearHintFor(ctx), segmentDirection);
     if (spans) {
       // Captured so the narrowing survives into the closure below.
       const settled = state;
       return {
         relevant: true,
         subjectName: null,
-        declarations: spans.map((range) => ({
-          state: settled,
-          start: range.start,
-          end: range.end,
+        // A segment that stated its own direction keeps it; the rest take the
+        // message's. Stamping `settled` on all of them recorded "dec can" as
+        // blocked whenever an earlier segment said "cannot".
+        declarations: spans.map((entry) => ({
+          state: entry.state ?? settled,
+          start: entry.range.start,
+          end: entry.range.end,
         })),
         maxLeaveDays: leaveCap,
       };

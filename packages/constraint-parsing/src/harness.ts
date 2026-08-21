@@ -13,7 +13,11 @@
 import { mightContainConstraint } from "./prefilter.js";
 import { parseAvailabilityMessage } from "./grammar/availability.js";
 import { parseDestinationObjection } from "./grammar/destination.js";
-import { joinUtterances, looksLikeContinuation } from "./grammar/continuation.js";
+import {
+  joinUtterances,
+  looksLikeContinuation,
+  sameReading,
+} from "./grammar/continuation.js";
 import { parseParticipantNote } from "./grammar/notes.js";
 import { namesOpaquePeriod } from "./grammar/opaque.js";
 import { parseOptionReference } from "./grammar/option-reference.js";
@@ -164,7 +168,12 @@ export function runMessage(
   if (lastUtterance && looksLikeContinuation(text)) {
     const joined = joinUtterances(lastUtterance, text);
     const combined = parseAvailabilityMessage(joined, ctx);
-    if (combined && combined.declarations.length > 0) {
+    const before = parseAvailabilityMessage(lastUtterance, ctx);
+    const addsNothing =
+      combined !== null &&
+      before !== null &&
+      sameReading(before.declarations, combined.declarations);
+    if (combined && combined.declarations.length > 0 && !addsNothing) {
       return verdict(
         "CONTINUATION",
         `joined to "${lastUtterance}" -> ${brief(combined.declarations)}`,
