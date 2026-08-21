@@ -11,6 +11,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { runConversation, type Message, type Verdict } from "../harness.js";
+import { namesKnownDestination } from "../grammar/proposals.js";
+import { namesRecurringPeriod } from "../grammar/opaque.js";
 
 const dir = process.argv[2];
 if (!dir) {
@@ -43,6 +45,9 @@ interface Smell {
   code: string;
   why: string;
 }
+
+/** The spans each speaker's last declaration recorded, for the no-op check. */
+const prevSpans = new Map<string, string>();
 
 function smellsOf(v: Verdict): Smell[] {
   const out: Smell[] = [];
@@ -116,11 +121,20 @@ function smellsOf(v: Verdict): Smell[] {
         if (name === "ADD" || name === "REMOVE" || name === "REPLACE") continue;
         const known = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
         const titleCased = new RegExp(`\\b${name}\\b`).test(v.text);
-        if (!titleCased && known.test(v.text) && !/^(?:japan|korea|taiwan|vietnam|bali|thailand|hainan|perth|da nang|bangkok|seoul|tokyo|osaka|taipei|penang|kl|batam|bintan)$/i.test(name))
-          out.push({ code: "EDIT-DEST-SUSPECT", why: `"${name}" was never capitalised in the message` });
+        if (!titleCased && known.test(v.text) && !namesKnownDestination(name))
+          out.push({ code: "EDIT-DEST-SUSPECT", why: `"${name}" is unrecognised and was never capitalised` });
       }
     }
   }
+
+  // Assent joins the shortlist; it must never clear it.
+  if (/"op":"REPLACE"/.test(d) &&
+      /\b(?:idm|dun ?mind|don'?t mind|chin ?chai|also can|up to (?:you|u|yall))\b/i.test(v.text))
+    out.push({ code: "EDIT-REPLACE-FROM-ASSENT", why: "agreeing to a place cleared the others" });
+
+  // A recurring period we cannot place should be asked about, not recorded.
+  if (v.outcome === "AVAILABILITY" && namesRecurringPeriod(v.text))
+    out.push({ code: "AVAIL-RECURRING-GUESS", why: "guessed one instance of a recurring period" });
 
   if (v.outcome === "CONTINUATION") {
     const prev = /joined to "([^"]*)"/.exec(d)?.[1] ?? "";
@@ -128,6 +142,15 @@ function smellsOf(v: Verdict): Smell[] {
     // with it, or at least name a period.
     const sharesTime =
       /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|week|weekend|day|days|month|first|last|half)\b|\d/i;
+    // A continuation exists to narrow or extend the previous reading. When the
+    // join produces exactly what was already recorded, the fragment added
+    // nothing — and tryContinuation deletes and rewrites the declarations, so
+    // whatever the fragment did say is silently discarded. "12-19 can" after
+    // "ICT 9-20 mar" was swallowed whole this way.
+    const joinedSpans = (d.match(/"start":"[\d-]+","end":"[\d-]+"/g) ?? []).join("|");
+    if (prevSpans.has(v.speaker) && prevSpans.get(v.speaker) === joinedSpans)
+      out.push({ code: "CONT-NO-OP", why: `"${v.text}" changed nothing and was absorbed` });
+
     if (!sharesTime.test(v.text))
       out.push({ code: "CONT-NO-TIME", why: `attached "${v.text}" to "${prev}"` });
   }
@@ -135,10 +158,13 @@ function smellsOf(v: Verdict): Smell[] {
   if (v.outcome === "NOTE_ONLY" || v.noted) {
     if (/DESTINATION_OBJECTION/.test(d) && /\b(?:idm|dun ?mind|don'?t mind|ok|fine|can|like|love|nice|shiok)\b/i.test(v.text))
       out.push({ code: "NOTE-SENTIMENT-INVERTED", why: "assent recorded as an objection" });
-    if (/BUDGET/.test(d) && !/\b(?:budget|ex|expensive|cheap|afford|broke|money|cost|price|\$|\bk\b|pay|spend)\b/i.test(v.text))
+    if (/BUDGET/.test(d) && !/\$\s?[\d,]+|\b(?:budget|ex|expensive|cheap(?:est|er)?|afford|broke|money|cost|price|fare|\d+\s*k\b|pay|spend)\b/i.test(v.text))
       out.push({ code: "NOTE-BUDGET-NO-MONEY", why: "budget note with no money in the message" });
   }
 
+  if (v.outcome === "AVAILABILITY" || v.outcome === "CONTINUATION") {
+    prevSpans.set(v.speaker, (d.match(/"start":"[\d-]+","end":"[\d-]+"/g) ?? []).join("|"));
+  }
   return out;
 }
 
