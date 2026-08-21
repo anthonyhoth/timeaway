@@ -157,7 +157,7 @@ function findDuration(text: string): DurationEdit | null {
  * days for everyone.
  */
 const LEAVE_CONTEXT =
-  /\b(?:leave|al|annual leave|days? off|off days?)\b|\b(?:only|just)\s+take\s+\d{1,2}\s*days?\b/i;
+  /\b(?:leave|al|annual leave|days? off|off days?|unpaid|no ?pay leave|npl|mc|childcare leave)\b|\b(?:only|just)\s+take\s+\d{1,2}\s*days?\b/i;
 
 /**
  * Whether the text *states* a trip length, as opposed to mentioning a number
@@ -215,7 +215,7 @@ export function parseTripEdit(
   // in feb its snow season also" is an argument against February, and was
   // moving the trip there. Only a leading "if" — "we go feb if flight cheap"
   // is a real proposal with a condition attached.
-  if (/^\s*if\b/i.test(text)) return null;
+  if (/^\s*(?:ok|but|and|so|eh|then|only)?[\s,]*if\b/i.test(text)) return null;
 
   // Dates get proposed exactly the way destinations do — "how about December",
   // "December can?", "year end works", "why not next June" — so the same
@@ -252,10 +252,35 @@ export function parseTripEdit(
   // aloud, so both are taken. For a terse edit the older rule still holds:
   // "Korea instead" moves the destination, not the dates, and reading a
   // horizon out of it would be inventing one.
-  const horizon =
-    planning || (destinations.length === 0 && !duration)
+  // Suppressed only when a destination was named: "Korea instead" moves the
+  // place, and reading a horizon out of it would be inventing one. A *duration*
+  // is no reason to drop the dates — "deepavali long weekend, 8 oct" carries
+  // both, and October was being discarded in silence.
+  let horizon =
+    planning || destinations.length === 0
       ? (resolveHorizon(text, today) ?? undefined)
       : undefined;
+
+  // A stated length cannot fit inside a one-day window, so a single date beside
+  // one is an anchor rather than a bound: "deepavali long weekend, 8 oct" means
+  // a long weekend somewhere around the 8th, not a trip lasting from the 8th to
+  // the 8th. Widening to the month keeps the anchor inside the search space
+  // instead of producing a window nothing can satisfy.
+  if (duration && horizon && horizon.start === horizon.end) {
+    const [year, month] = horizon.start.split("-").map(Number) as [number, number];
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    horizon = {
+      start: `${year}-${pad(month)}-01` as typeof horizon.start,
+      end: `${year}-${pad(month)}-${pad(lastDay)}` as typeof horizon.end,
+    };
+  }
+
+  // A window that closed before today cannot be the trip's. Leave arithmetic
+  // said aloud — "take 10-13 aug u get 7/8-15/8" — resolves to dates in the
+  // past when the year is inferred wrongly, and emitting it as the horizon is
+  // worse than emitting nothing.
+  if (horizon && horizon.end < today) horizon = undefined;
 
   if (destinations.length === 0 && !duration && !horizon) return null;
 

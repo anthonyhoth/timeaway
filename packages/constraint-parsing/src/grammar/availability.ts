@@ -1,11 +1,12 @@
 import type { DeclaredAvailabilityState } from "@timeaway/shared";
 import type { ExtractionContext, ExtractionResult } from "../types.js";
-import { findMonthRange } from "./months.js";
+import { MONTH_RE, findMonthRange } from "./months.js";
 import type { FoundPeriod } from "./periods.js";
 import { findFuzzyPeriod, findRelativePeriod } from "./periods.js";
 import { findChronoPeriod } from "./chrono.js";
 import { parseMultiSpan } from "./multi-span.js";
 import { namesOpaquePeriod } from "./opaque.js";
+import { namesKnownDestination } from "./proposals.js";
 import { namesLengthWithinPeriod } from "./span-shape.js";
 import {
   rejectsNamedPeriod,
@@ -82,8 +83,25 @@ const SUB_PERIOD_QUALIFIER =
  * restriction, not a plain availability. Dropping the word made the parser
  * mark that period AVAILABLE while leaving every other date UNANSWERED, so
  * the person was never excluded from dates they had just ruled out.
+ *
+ * It has to *govern the date* to mean that. Matched as a bare word anywhere in
+ * the message, it ruled out the entire horizon on the strength of an unrelated
+ * clause: "now go also just sit in cafe" — where "just" means merely — blocked
+ * out nine months, and "23/2-28/2 is 6 days, i can only do 5 remember" applied
+ * the exclusive reading to a range the "only" had nothing to do with, since
+ * there the word governs a headcount of leave days.
  */
-const RESTRICTIVE = /\b(?:only|nothing but|just)\b/i;
+const RESTRICTED_TARGET =
+  `(?:${MONTH_RE}` +
+  String.raw`|\d{1,2}\s*[/-]\s*\d{1,2}` +
+  String.raw`|\d{1,2}(?:st|nd|rd|th)` +
+  String.raw`|during|school\s*hol\w*|holidays?|hols?|closure|shutdown|break` +
+  String.raw`|weekends?|weekdays?|term\s*break|long\s*weekend` +
+  ")";
+const RESTRICTIVE = new RegExp(
+  String.raw`\b(?:only|just|nothing but)\b(?:\s+\S+){0,3}?\s+` + RESTRICTED_TARGET,
+  "i",
+);
 
 /**
  * "Roster only out next week" names when they will *know*, not the dates
@@ -150,7 +168,33 @@ const OPEN_ENDED =
  * Particles are not objects. "I dun mind lah" is still the bare form.
  */
 const MIND_HAS_OBJECT =
-  /\b(?:idm|i\s*dun\s*mind|i\s*don'?t\s*mind|dun\s*mind|don'?t\s*mind|no preference (?:for|on))\s+(?!lah\b|leh\b|lor\b|sia\b|ah\b|one\b|really\b|actually\b|either\b|too\b|also\b)\S/i;
+  /\b(?:idm|i\s*dun\s*mind|i\s*don'?t\s*mind|dun\s*mind|don'?t\s*mind|no preference (?:for|on))\s+(?!lah\b|leh\b|lor\b|sia\b|ah\b|one\b|really\b|actually\b|too\b|also\b)\S/i;
+
+/**
+ * Bare assent — and only bare assent — means "any dates at all".
+ *
+ * MIND_HAS_OBJECT catches the object sitting *after* the phrase ("idm japan").
+ * A second replay found it in front of it ("taiwan i dun mind"), behind a word
+ * its own lookahead excused ("idm either"), and trailing a sentence about
+ * something else entirely ("3 days i can unpaid also, idm") — each one booking
+ * nine months of availability from a remark about a destination or a leave
+ * figure.
+ *
+ * Rather than chase word order, ask what else is in the message: a place or a
+ * number means the assent is about that, not about the calendar.
+ */
+const AMBIGUOUS_ASSENT =
+  /\b(?:idm|dun ?mind|don'?t mind|chin ?chai|anything (?:also )?can|any(?:thing)? can|up to (?:you|u|yall|the group)|no preference)\b/i;
+
+function assentIsBare(text: string): boolean {
+  // "Anytime", "whenever", "flexible" can only be about the calendar, so they
+  // stand however much else is in the message: "got 12 days leave, anytime
+  // works" is a leave cap *and* full availability, and requiring bareness of it
+  // would drop the availability on account of the "12".
+  if (!AMBIGUOUS_ASSENT.test(text)) return true;
+  if (/\d/.test(text)) return false;
+  return !namesKnownDestination(text);
+}
 
 /**
  * Obligations that read as hard unavailability in this segment.
@@ -409,6 +453,7 @@ export function parseAvailabilityMessage(
     !dateRef &&
     OPEN_ENDED.test(text) &&
     !MIND_HAS_OBJECT.test(text) &&
+    assentIsBare(text) &&
     !NEGATIVE.test(text) &&
     !UNKNOWN.test(text)
   ) {

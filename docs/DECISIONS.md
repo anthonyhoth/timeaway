@@ -2209,3 +2209,66 @@ the entire horizon; a locative preposition still makes any infinitive a place
 (`"i want to cry"` adds a destination called Cry — the third distinct cause of
 that class); naming a trip length discards the month beside it; `"around 19/2"`
 reads as money; and mid-sentence conditionals apply as though agreed.
+
+---
+
+## Decision (2026-08-21): scope — what a word is *about*
+
+The six findings left over from the second replay turned out to be one question
+asked in six places. A word was matched anywhere in the message and its meaning
+assumed, when the meaning depends entirely on what it governs. "Only" is a date
+restriction or a headcount. "To" heads a country or an infinitive. "Idm" agrees
+to a calendar or to a destination. Same token, opposite result.
+
+**Assent is about whatever it names.** `MIND_HAS_OBJECT` already existed for
+"idm japan" and only looked for the object *after* the phrase. The replay found
+it in front ("taiwan i dun mind"), behind a word its own lookahead excused
+("idm either"), and trailing a sentence about something else ("3 days i can
+unpaid also, idm") — each booking nine months of availability. Rather than chase
+word order, the rule now asks what *else* is in the message: a place or a figure
+means the assent is about that. This applies only to the ambiguous vocabulary —
+"anytime" and "flexible" can only be about the calendar, so "got 12 days leave,
+anytime works" still records both the cap and the availability.
+
+**"Only" has to govern a date.** As a bare word it ruled out the whole horizon
+on the strength of an unrelated clause: "now go also just sit in cafe", where
+"just" means merely, blocked nine months; "i can only do 5 remember" applied the
+exclusive reading to a date range in the same sentence that the "only" had
+nothing to do with.
+
+**"To" is only locative after a verb of travel.** Third distinct cause of a
+nonsense destination, after all-caps (CENT) and leftover residue (Again): "i
+want to cry" was adding a place called Cry.
+
+Also fixed: a stated length no longer discards the month beside it ("deepavali
+long weekend, 8 oct" kept the length and dropped October); a single date beside
+a duration widens to its month, since a four-day trip cannot happen in a one-day
+window; "around 19/2" no longer reads as money; and "only if" opens a condition
+exactly as "if" does.
+
+**Three notes on how this went, which matter more than the fixes.**
+
+*An over-reach, reverted.* Declining any declaration that falls wholly outside
+the trip window looked obviously right and broke four existing tests. Those
+tests encode a real decision: an explicit out-of-window date is kept so the
+engine can surface the mismatch, rather than being silently shifted or dropped.
+The guard was removed and two of this batch's own tests were narrowed to assert
+what was actually fixed. A stray one-day reading of "now" survives because of
+it, and is left alone deliberately.
+
+*Two regressions, self-inflicted and caught by re-running the corpora rather
+than by the suite.* Widening what trip-edit will claim let "3 days i can unpaid
+also" become a three-day trip — "unpaid" was not in the leave vocabulary — and
+surfaced a horizon resolved into the past from leave arithmetic. Both now have
+tests. Neither would have been found without replaying the corpora after the
+change, which is the argument for keeping the harness alongside the suite.
+
+*The remaining triage flags are correct behaviour.* Bare "idm" and "chin chai,
+anything also can" really do mean the whole window. The heuristic cannot tell,
+and that is fine — its job is to make a set small enough to read.
+
+**Still open:** a restriction naming a recurring period captures only the first
+instance (the teacher listing three school holidays gets one recorded and the
+rest of the horizon ruled out — the opaque-period path already exists for this
+shape and asking is probably right); loose relative words resolve to a single
+day near today; and leave arithmetic said aloud still reads as a trip length.

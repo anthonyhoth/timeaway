@@ -124,6 +124,27 @@ const COMMON_DESTINATIONS = new Set(
 );
 
 /**
+ * Names in the list above, as one alternation, for a plain "does this message
+ * mention somewhere?" test.
+ *
+ * Entries shorter than four characters are left out on purpose: "us", "la" and
+ * "nz" collide with ordinary words, and this is used to *withhold* a reading,
+ * where a false positive is silent.
+ */
+const KNOWN_DESTINATION_RE = new RegExp(
+  `\\b(?:${[...COMMON_DESTINATIONS]
+    .filter((name) => name.length >= 4)
+    .map((name) => escape(name))
+    .join("|")})\\b`,
+  "i",
+);
+
+/** Whether the message names a place we already recognise. */
+export function namesKnownDestination(text: string): boolean {
+  return KNOWN_DESTINATION_RE.test(text);
+}
+
+/**
  * Is this residue worth treating as a place?
  *
  * Only consulted for assessment frames, where the subject is unconstrained —
@@ -141,8 +162,18 @@ export function namesLikelyPlace(
 
   // A locative preposition selects a place outright, whatever follows it —
   // "let's go to Sekinchan" needs no list and no capital letter.
+  //
+  // "To" alone is not locative, though: it also heads every infinitive, so
+  // "i want to cry" was adding a destination called Cry. It counts only after a
+  // verb of travel, which is the reading that made the rule worth having. The
+  // genuinely locational prepositions still stand on their own.
   const head = escape(name.split(" ")[0]!);
-  if (new RegExp(`\\b(?:to|in|at|around)\\s+${head}\\b`, "i").test(originalText)) {
+  const TRAVEL =
+    String.raw`go(?:ing|es)?|went|fly(?:ing)?|flew|travel(?:l?ing)?|head(?:ing|ed)?|visit(?:ing|ed)?|off|back|trip|flight`;
+  if (
+    new RegExp(`\\b(?:${TRAVEL})\\s+to\\s+${head}\\b`, "i").test(originalText) ||
+    new RegExp(`\\b(?:in|at|around)\\s+${head}\\b`, "i").test(originalText)
+  ) {
     return true;
   }
 

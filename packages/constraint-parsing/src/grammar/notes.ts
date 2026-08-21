@@ -66,7 +66,7 @@ const BUDGET_WORDS_WEAK = /\b(?:cheap(?:er)?|price|prices|fare|fares)\b/i;
 // ("ya 30k this sat") and a renovation quote ("quoted me 68k") were both
 // reading as the trip's budget.
 const BUDGET_AMOUNT =
-  /(?:\$\s?\d+|\b(?:under|below|within|around|about|roughly|max)\s+\$?\d+(?:\s*k)?\b|\b\d+(?:\.\d+)?\s*k\s*(?:max|budget|each|pp|per pax|only|or so)\b|\b(?:budget|spend|max|under|below|within|around|about|roughly|cost|costs)\s*\$?\s*\d+(?:\.\d+)?\s*k\b)/i;
+  /(?:\$\s?\d+|\b(?:under|below|within|around|about|roughly|max)\s+\$?\d+(?:\s*k)?\b(?!\s*[/-]\s*\d)|\b\d+(?:\.\d+)?\s*k\s*(?:max|budget|each|pp|per pax|only|or so)\b|\b(?:budget|spend|max|under|below|within|around|about|roughly|cost|costs)\s*\$?\s*\d+(?:\.\d+)?\s*k\b)/i;
 
 const BUDGET = {
   /** Weak vocabulary needs the speaker to be talking about themselves. */
