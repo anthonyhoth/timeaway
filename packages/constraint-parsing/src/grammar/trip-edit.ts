@@ -1,12 +1,9 @@
 import type { ISODate } from "@timeaway/shared";
 import type { DestinationEdit } from "./destination.js";
 import { parseDestinationEdits } from "./destination.js";
-import { MONTH_RE } from "./months.js";
 import { parseReversal } from "./reversal.js";
-import {
-  statesPersonalConstraint,
-  statesThirdPartyConstraint,
-} from "./availability.js";
+import { statesPersonalConstraint } from "./availability.js";
+import { rejectsNamedPeriod, statesThirdPartyConstraint } from "./stance.js";
 import { readProposal } from "./proposals.js";
 import { resolveHorizon } from "./horizon.js";
 import type { DateRange } from "./periods.js";
@@ -66,30 +63,6 @@ const GROUP_PLAN =
 
 const EDIT_WORD =
   /\b(?:also|too|as well|add|another|what about|how about|consider|include|instead|rather than|change (?:it )?to|switch to|actually|make it|push (?:it )?to|move (?:it )?to|drop|remove|cross off|forget|scrap|is out|are out|no longer|not)\b/i;
-
-/**
- * A month named in order to *rule it out*.
- *
- * simulation.test.ts already guards the "nov too rainy" shape. A replay of
- * three simulated group chats found the same failure under a vocabulary none of
- * those patterns cover — out, dead, die — because "not" and "out" are edit
- * words, so a rejection read as a request and pointed the trip at exactly the
- * month being refused:
- *
- *     "so nov out?"                     -> horizon November
- *     "n cny is feb so feb also dead"   -> horizon February
- *     "ok so not nov. dec?"             -> horizon November
- *
- * The last one is the sharpest: it took the rejected month and discarded the
- * one actually proposed. Vetoing the whole edit loses that proposal, which is
- * the safe direction to be wrong in — a month nobody chose is worse than no
- * change, and someone will say "december" again.
- */
-const REJECTS_PERIOD = new RegExp(
-  `\\b(?:not|no)\\s+(?:${MONTH_RE})\\b` +
-    `|\\b(?:${MONTH_RE})\\b[^.!?]{0,24}?\\b(?:out|dead|die|died|gone|cancelled|scrapped|cmi|sian|jialat|no good)\\b`,
-  "i",
-);
 
 /**
  * `states` marks a phrase that is a trip length *by itself*. A bare "weekend"
@@ -235,8 +208,9 @@ export function parseTripEdit(
   // the suggestion. "Meh" is different: it challenges the premise rather than
   // offering one, so it proposes nothing to apply.
   if (/\b(?:meh|izzit|is ?it)\s*\??\s*$/i.test(text)) return null;
-  // A month named to refuse it is not a request for it.
-  if (REJECTS_PERIOD.test(text)) return null;
+  // A period named to refuse it is not a request for it. Shared with
+  // availability so the same sentence gets the same answer at both layers.
+  if (rejectsNamedPeriod(text)) return null;
   // A hypothetical describes a scenario rather than asking for one: "if korea
   // in feb its snow season also" is an argument against February, and was
   // moving the trip there. Only a leading "if" — "we go feb if flight cheap"

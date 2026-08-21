@@ -7,6 +7,11 @@ import { findChronoPeriod } from "./chrono.js";
 import { parseMultiSpan } from "./multi-span.js";
 import { namesOpaquePeriod } from "./opaque.js";
 import { namesLengthWithinPeriod } from "./span-shape.js";
+import {
+  rejectsNamedPeriod,
+  statesThirdPartyConstraint,
+  stripParticles,
+} from "./stance.js";
 import { findSubPeriod } from "./subperiods.js";
 
 /**
@@ -19,10 +24,6 @@ import { findSubPeriod } from "./subperiods.js";
  * to the LLM. Declining is the safe outcome; a confident wrong parse silently
  * corrupts someone's availability (docs/DECISIONS.md).
  */
-
-/** Trailing discourse particles carry no meaning for parsing. */
-const PARTICLES =
-  /\s*\b(?:lah|leh|lor|lorh|sia|meh|hor|hah|liao|already|sla|ah|ar|eh|ya|yah|man|bro|sis|guys?)\b\s*/gi;
 
 /** Language whose meaning turns on a condition the grammar cannot model. */
 const CONDITIONAL =
@@ -171,9 +172,6 @@ const BLOCKING_COMMITMENT =
 const EXHAUSTED_LEAVE =
   /\b(?:no|zero)\s+(?:more\s+)?(?:al|leave|annual leave)\b|\b(?:al|leave|annual leave)\b[^.]{0,24}\b(?:all used up|used up|used finish|finished|habis|gone|none left|no more)\b|\b(?:burnt|burned|used up|finished|cleared|habis)\b[^.]{0,24}\b(?:al|leave|annual leave)\b/i;
 
-function stripParticles(text: string): string {
-  return text.replace(PARTICLES, " ").replace(/\s+/g, " ").trim();
-}
 
 /**
  * "max 2 days leave", "only got 2 days AL", "2 day leave left".
@@ -336,29 +334,6 @@ export function statesPersonalConstraint(rawText: string): boolean {
 }
 
 /**
- * Someone relaying a *third party's* constraint.
- *
- * The extraction pipeline already refuses these on the availability side —
- * `subjectName` is set and the caller returns without storing, because
- * resolving identity is not something we do yet. parseTripEdit had no
- * equivalent guard, so the same sentence routed around the refusal and became
- * the group's search window:
- *
- *   "sheryl says she can only do school hols" → horizon 15 Nov – 31 Dec
- *
- * Sheryl is not on the trip. Used as a veto for the same reason as
- * `statesPersonalConstraint`: whoever the dates belong to, they are not the
- * plan.
- */
-const THIRD_PARTY =
-  /\b(?:asked if|says? (?:he|she|they)|said (?:he|she|they))\b|\b(?:he|she|they)\s+(?:can(?:'?t|not)?|only|says?|said|wants?|needs?|prefers?|will|would|might)\b/i;
-
-/** Whether the dates in this message belong to someone who is not speaking. */
-export function statesThirdPartyConstraint(rawText: string): boolean {
-  return THIRD_PARTY.test(stripParticles(rawText));
-}
-
-/**
  * Work and life commitments that block travel without using the word "can't":
  * a roster, a leave freeze, a renovation, a posting.
  */
@@ -406,7 +381,17 @@ export function parseAvailabilityMessage(
   if (CONDITIONAL.test(text)) return null;
 
   // Someone speaking for a third party needs identity resolution we don't do.
+  // The bare-pronoun check stays as the wide net; the shared rule adds the
+  // possessive form ("my gf can only do weekends") that it never caught.
   if (/\b(?:he|she|they|his|her)\b/i.test(text)) return null;
+  if (statesThirdPartyConstraint(text)) return null;
+
+  // A period the *group* has ruled out is nobody's availability. Without this,
+  // a leading "ok" made messageIntent positive and "ok sept dead" recorded the
+  // speaker as free for the whole of the month just killed. Personal refusals
+  // ("dec cannot", "feb cmi") are deliberately not rejections — they are
+  // declarations, and NEGATIVE below still reads them as UNAVAILABLE.
+  if (rejectsNamedPeriod(text)) return null;
 
   const leaveCap = findLeaveCap(text);
   const dateRef = findDateReference(

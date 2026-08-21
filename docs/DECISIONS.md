@@ -2142,3 +2142,70 @@ the grammar these shapes, not to loosen the vetoes back.
 `packages/constraint-parsing/src/harness.ts` and `src/scripts/` replay a corpus
 of chat messages through the pipeline and print what each one produced; that is
 how these were found, and how the next set should be.
+
+---
+
+## Decision (2026-08-21): stance.ts — one place that answers "whose statement is this?"
+
+A second replay, four fresh group chats and 406 unseen messages, found every
+fix from the first sweep holding — and two new defects that were holes in those
+same fixes. Both had the same cause, and it is a cause this repo keeps hitting:
+**a rule that belongs to the pipeline was added to whichever parser last had a
+bug in it.**
+
+The rejection rule ("a month named to rule it out is not a request for it")
+went into `parseTripEdit`. But availability is parsed *first*. So the defect was
+never removed, only moved, and it got worse on the way: instead of pointing the
+trip at a month the group had killed, the pipeline began recording the
+**speaker as free** for all of it.
+
+    "ok sept dead"   -> AVAILABLE 2026-09-01 … 2026-09-30
+    "ok march out"   -> AVAILABLE 2027-03-01 … 2027-03-31
+
+A leading "ok" is enough to make `messageIntent` positive; the rejection word
+after it was never weighed. Drop the "ok" and both correctly claim nothing.
+
+The second hole: the rejection pattern matched a negator against a *month*, and
+a negated **range** puts the month after the numbers. `"but not 3-9 nov"` — the
+speaker's in-camp week — pointed the trip at exactly those dates.
+
+Third, the third-party guard caught the reported form ("sarah says she can only
+do school hols") and missed the possessive, so `"my gf can only do weekends, and
+she got paper 12 sept"` set the group's window to a single day.
+
+**`grammar/stance.ts` now owns both questions** — is this a rejection, and whose
+constraint is it — and availability, trip-edit and anything later all consult
+it. `stripParticles` moved there too, since the stance rules and the
+availability grammar have to agree on what a sentence says once the noise is
+gone.
+
+Two distinctions the shared rule has to keep, both discovered by trying to
+collapse them:
+
+- **A group rejection is not a personal refusal.** "Sept dead" rules a month out
+  for everyone; "dec cannot" and "feb cmi" are one person saying they are busy,
+  which is a declaration worth recording. So `cmi`, `cannot` and `jialat` are
+  deliberately *not* rejection words — they stay in availability's `NEGATIVE`.
+  Collapsing the two would have silently deleted real availability.
+- **Speaking for someone is not being obliged to them.** "My gf can only do
+  weekends" is unresolvable third-party dates; "my sister getting married in
+  june" and "my mom operation in feb" are the *speaker's own* blockers. Family
+  are therefore absent from the possessive list — they are the common case for
+  the second reading, and vetoing them would throw away the obligations this
+  market is full of.
+
+`src/scripts/triage.ts` was added for this sweep: it replays a corpus and prints
+only the verdicts that smell wrong, each smell being a shape that was a real
+defect at least once. It is what made 406 messages tractable — and it initially
+*missed* the headline defect, because a 30-day span is not a suspicious one. The
+smell it lacked is now there.
+
+**Still open from this sweep, in rough severity order:** assent about a
+destination still books the whole horizon (`MIND_HAS_OBJECT` exists but only
+catches the object-after form — `"taiwan i dun mind"` puts it before, and
+`"idm either"` is excluded by its own lookahead); the exclusive `only`/`just`
+reading fires when the word governs something that is not a date, blocking out
+the entire horizon; a locative preposition still makes any infinitive a place
+(`"i want to cry"` adds a destination called Cry — the third distinct cause of
+that class); naming a trip length discards the month beside it; `"around 19/2"`
+reads as money; and mid-sentence conditionals apply as though agreed.
